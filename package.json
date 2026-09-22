@@ -1,0 +1,16 @@
+{
+  "name": "greencode",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CLI para logística reversa de equipamentos eletrônicos.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "npm run build && node --test tests/av1.test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
