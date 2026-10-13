@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
@@ -21,13 +20,13 @@ import { TipoEquipamento } from '../dist/types/TipoEquipamento.js';
 import { ValidadorCNPJ } from '../dist/validators/ValidadorCNPJ.js';
 import { ValidadorDataEntrada } from '../dist/validators/ValidadorDataEntrada.js';
 
-function criarContexto() {
-  const raiz = mkdtempSync(join(tmpdir(), 'greencode-av1-'));
+function criarContexto(opcoesRepositorio = {}) {
+  const raiz = mkdtempSync(join(process.cwd(), '.tmp-greencode-av1-'));
   const criptografia = new CriptografiaArquivo();
   const configuracao = new ConfiguracaoSistema(join(raiz, 'configuracao-mestre.json'));
   const provisionamento = new ProvisionamentoInicial(configuracao, criptografia);
   const chave = provisionamento.provisionar('senha-admin-segura');
-  const repositorio = new RepositorioArquivo(join(raiz, 'dados'), criptografia, chave);
+  const repositorio = new RepositorioArquivo(join(raiz, 'dados'), criptografia, chave, opcoesRepositorio);
   const autenticacao = new ServicoAutenticacao(repositorio);
   const organizacao = new ServicoOrganizacao(repositorio, new ValidadorCNPJ());
   const lote = new ServicoLote(repositorio, new ValidadorDataEntrada());
@@ -79,7 +78,9 @@ test('jornada completa: provisionamento, rastreabilidade e journal', () => {
     assert.equal(historico.movimentacoes[0].destino, 'Área de desmontagem');
 
     JournalTransacao.criar('TESTE_JORNADA', 'equipamentos', null, { id: 'EQ-001' }, 'admin', contexto.repositorio).registrar();
-    assert.equal(JournalTransacao.listar(contexto.repositorio).length, 1);
+    const journal = JournalTransacao.listar(contexto.repositorio);
+    assert.equal(journal.some((transacao) => transacao.operacao === 'TESTE_JORNADA'), true);
+    assert.equal(journal.some((transacao) => transacao.operacao === 'CRIAR' && transacao.entidade === 'organizacoes'), true);
   } finally { removerContexto(contexto); }
 });
 
@@ -119,13 +120,54 @@ test('exige justificativa ao degradar estado físico em duas categorias', () => 
 test('rejeita senha incorreta, usuário sem permissão e sessão expirada', () => {
   const contexto = criarContexto();
   try {
-    contexto.autenticacao.criarCredencial('auditor', 'senha-auditor', PapelUsuario.AUDITOR);
+    contexto.autenticacao.criarCredencial('admin', 'senha-admin', PapelUsuario.ADMINISTRADOR);
+    const sessaoAdmin = contexto.autenticacao.login('admin', 'senha-admin');
+    contexto.autenticacao.criarCredencial('auditor', 'senha-auditor', PapelUsuario.AUDITOR, 'Auditor de Teste', sessaoAdmin.token);
     assert.throws(() => contexto.autenticacao.login('auditor', 'incorreta'), /inválidos/);
     const sessao = contexto.autenticacao.login('auditor', 'senha-auditor');
     assert.equal(contexto.autenticacao.possuiPermissao(sessao.token, 'GERAR_RELATORIOS'), true);
     assert.equal(contexto.autenticacao.possuiPermissao(sessao.token, 'GERENCIAR_LOTES'), false);
+    assert.throws(
+      () => contexto.autenticacao.criarCredencial('bloqueado', 'senha', PapelUsuario.OPERADOR_CADASTRO, 'Bloqueado', sessao.token),
+      /permissão/,
+    );
+    assert.throws(() => contexto.autenticacao.listarCredenciais(sessao.token), /permissão/);
+    assert.throws(() => contexto.autenticacao.alterarSenha(sessao.token, 'senha-auditor', 'nova-senha'), /somente para consulta/);
     sessao.expiracao = new Date(Date.now() - 1);
     assert.equal(contexto.autenticacao.validarToken(sessao.token), false);
+  } finally { removerContexto(contexto); }
+});
+
+test('administrador consulta, atualiza e desativa contas preservando uma referência anônima', () => {
+  const contexto = criarContexto();
+  try {
+    contexto.autenticacao.criarCredencial('admin', 'senha-admin', PapelUsuario.ADMINISTRADOR, 'Admin');
+    const admin = contexto.autenticacao.login('admin', 'senha-admin');
+    contexto.autenticacao.criarCredencial('operador', 'senha-operador', PapelUsuario.OPERADOR_CADASTRO, 'Operador Um', admin.token);
+
+    const consultado = contexto.autenticacao.buscarCredencial('operador', admin.token);
+    assert.equal(consultado.nomeExibicao, 'Operador Um');
+    assert.equal('hashSenha' in consultado, false);
+    contexto.autenticacao.alterarNomeExibicao('operador', 'Operador Dois', admin.token);
+    contexto.autenticacao.alterarPapel('operador', PapelUsuario.GESTOR_ALMOXARIFADO, admin.token);
+    contexto.autenticacao.redefinirSenha('operador', 'senha-nova', admin.token);
+    assert.throws(() => contexto.autenticacao.login('operador', 'senha-operador'), /inválidos/);
+    contexto.autenticacao.login('operador', 'senha-nova');
+
+    const antesDeDesativar = contexto.autenticacao.buscarCredencial('operador', admin.token);
+    contexto.autenticacao.desativarCredencial('operador', admin.token);
+    assert.throws(() => contexto.autenticacao.login('operador', 'senha-nova'), /inválidos/);
+    const tombstone = contexto.repositorio.carregarEntidade('credenciais', antesDeDesativar.id);
+    assert.equal(tombstone.ativo, false);
+    assert.equal(tombstone.usuario, '');
+    assert.equal(tombstone.nomeExibicao, '');
+    assert.equal(tombstone.hashSenha, '');
+    assert.equal(tombstone.salt, '');
+    const eventoDesativacao = JournalTransacao.listar(contexto.repositorio)
+      .find((item) => item.entidade === 'credenciais' && item.dadosDepois?.ativo === false);
+    assert.equal(eventoDesativacao.dadosAntes.usuario, undefined);
+    assert.equal(eventoDesativacao.dadosAntes.hashSenha, undefined);
+    assert.equal(eventoDesativacao.dadosDepois.usuario, undefined);
   } finally { removerContexto(contexto); }
 });
 
@@ -135,6 +177,52 @@ test('persiste com escrita atômica sem arquivo temporário após sucesso', () =
     cadastrarOrganizacao(contexto.organizacao);
     const diretorio = join(contexto.raiz, 'dados');
     assert.equal(readdirSync(diretorio).some((arquivo) => arquivo.includes('.tmp-')), false);
+    assert.equal(contexto.repositorio.listarEntidades('organizacoes').length, 1);
+  } finally { removerContexto(contexto); }
+});
+
+test('falha de escrita não altera o arquivo final, remove temporário e registra aborto', () => {
+  let gravacoesAteFalha = 0;
+  const contexto = criarContexto({
+    antesRenomear: () => {
+      gravacoesAteFalha += 1;
+      if (gravacoesAteFalha === 2) throw new Error('Falha simulada antes da renomeação.');
+    },
+  });
+  try {
+    assert.throws(() => cadastrarOrganizacao(contexto.organizacao), /Falha simulada/);
+    assert.equal(contexto.repositorio.carregarEntidade('organizacoes', 'ORG-001'), null);
+    assert.equal(readdirSync(join(contexto.raiz, 'dados')).some((arquivo) => arquivo.includes('.tmp-')), false);
+    assert.equal(JournalTransacao.listar(contexto.repositorio).some((item) => item.resultado === 'ABORTADA'), true);
+  } finally { removerContexto(contexto); }
+});
+
+test('recupera no início uma intenção de transação sem desfecho', () => {
+  const contexto = criarContexto();
+  try {
+    const organizacao = {
+      id: 'ORG-PENDENTE', razaoSocial: 'Organização Pendente', cnpj: '04.252.011/0001-10',
+      inscricaoEstadual: 'ISENTO', enderecoCompleto: 'Rua Teste', telefone: '', email: '',
+      dataCadastro: new Date(), ativo: true, contratoVigente: null,
+    };
+    new JournalTransacao('journal-intencao', new Date(), 'CRIAR', 'organizacoes', null, organizacao,
+      'usuario-anonimo-1', contexto.repositorio, 'tx-pendente', 'INTENCAO').registrar();
+
+    assert.equal(contexto.repositorio.carregarEntidade('organizacoes', 'ORG-PENDENTE'), null);
+    assert.equal(JournalTransacao.recuperarPendentes(contexto.repositorio), 1);
+    assert.equal(contexto.repositorio.carregarEntidade('organizacoes', 'ORG-PENDENTE').id, 'ORG-PENDENTE');
+    assert.equal(JournalTransacao.recuperarPendentes(contexto.repositorio), 0);
+  } finally { removerContexto(contexto); }
+});
+
+test('remove temporários órfãos no início sem alterar os arquivos definitivos', () => {
+  const contexto = criarContexto();
+  try {
+    cadastrarOrganizacao(contexto.organizacao);
+    const caminhoTemporario = join(contexto.raiz, 'dados', 'organizacoes.txt.tmp-orphan');
+    writeFileSync(caminhoTemporario, 'temporário órfão');
+    assert.equal(contexto.repositorio.limparTemporariosOrfaos(), 1);
+    assert.equal(existsSync(caminhoTemporario), false);
     assert.equal(contexto.repositorio.listarEntidades('organizacoes').length, 1);
   } finally { removerContexto(contexto); }
 });
@@ -154,5 +242,11 @@ test('rotaciona o journal ao ultrapassar 10 MB', () => {
 });
 
 test.todo('bloqueia a mudança para EM_DESMONTE antes de a triagem ser concluída: falta método de alteração de status no ServicoEquipamento');
-test.todo('registra automaticamente no journal as operações dos serviços: os serviços ainda não chamam JournalTransacao.registrar');
-test.todo('simula falha de escrita e verifica tratamento de arquivo temporário órfão: o RepositorioArquivo não possui ponto de injeção de falha');
+test('a recuperação de transações permanece idempotente depois de confirmada', () => {
+  const contexto = criarContexto();
+  try {
+    cadastrarOrganizacao(contexto.organizacao);
+    assert.equal(JournalTransacao.recuperarPendentes(contexto.repositorio), 0);
+    assert.equal(contexto.repositorio.listarEntidades('organizacoes').length, 1);
+  } finally { removerContexto(contexto); }
+});

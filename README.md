@@ -61,6 +61,9 @@ As permissões são verificadas tanto no menu quanto antes da execução do serv
 | `login USUARIO --senha SENHA` | inicia uma sessão |
 | `logout` | encerra a sessão atual |
 | `usuario criar --usuario U --senha S --papel PAPEL` | cria uma credencial (administrador) |
+| `usuario listar` / `usuario consultar --usuario U` | consulta contas sem mostrar hashes ou salts (administrador) |
+| `usuario nome --usuario U --novo NOME` / `usuario papel --usuario U --papel PAPEL` | atualiza nome de exibição ou papel (administrador) |
+| `usuario senha --usuario U --nova SENHA` / `usuario desativar --usuario U` | redefine senha ou desativa conta (administrador) |
 | `senha alterar --atual S --nova N` | altera a senha do usuário autenticado |
 | `org criar ...` | cadastra uma organização |
 | `org renovar-contrato --id ORG --vencimento AAAA-MM-DD` | renova o contrato existente |
@@ -81,7 +84,9 @@ As permissões são verificadas tanto no menu quanto antes da execução do serv
 - A chave mestra é gerada no provisionamento e protegida por chave derivada da senha do administrador com scrypt.
 - Sessões expiram após 30 minutos de inatividade.
 - A persistência usa arquivo temporário e renomeação para escrita atômica.
-- O journal é rotacionado ao ultrapassar 10 MB.
+- Cada gravação e exclusão registra uma intenção cifrada no journal antes de alterar o arquivo de dados; o resultado é registrado em seguida.
+- Na inicialização, o sistema remove temporários órfãos e reaplica intenções sem desfecho.
+- O journal é rotacionado ao atingir 10 MB e não é removido automaticamente, atendendo à retenção mínima de 180 dias.
 
 Detalhes, limitações e cenários de falha estão em [SEGURANCA_E_TESTES.md](docs/SEGURANCA_E_TESTES.md).
 
@@ -112,5 +117,4 @@ docs/           Documentação de segurança e testes
 ## Limitações conhecidas
 
 - O histórico de comandos da CLI não é cifrado; comandos que contêm senha não são gravados nele.
-- O registro automático no journal pelos serviços ainda está pendente.
 - A regra de impedir `EM_DESMONTE` antes da triagem depende de uma operação de alteração de status que ainda não existe no serviço de equipamentos.

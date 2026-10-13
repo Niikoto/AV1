@@ -56,6 +56,13 @@ export class ServicoOrganizacao {
       .filter((organizacao) => organizacao.ativo);
   }
 
+  desativarOrganizacao(id: string, motivo: string): void {
+    const organizacao = this.buscarOrganizacao(id);
+    if (!organizacao.ativo) throw new Error('A organização já está desativada.');
+    organizacao.desativar(motivo);
+    this.repositorio.salvarEntidade('organizacoes', organizacao);
+  }
+
   renovarContrato(organizacaoId: string, novoVencimento: Date): void {
     const organizacao = this.buscarOrganizacao(organizacaoId);
 
@@ -64,6 +71,15 @@ export class ServicoOrganizacao {
     }
 
     organizacao.contratoVigente.renovar(novoVencimento);
+    this.repositorio.salvarEntidade('organizacoes', organizacao);
+  }
+
+  encerrarContrato(organizacaoId: string): void {
+    const organizacao = this.buscarOrganizacao(organizacaoId);
+    if (!organizacao.contratoVigente) {
+      throw new Error('A organização não possui contrato para encerrar.');
+    }
+    organizacao.contratoVigente.encerrar();
     this.repositorio.salvarEntidade('organizacoes', organizacao);
   }
 
@@ -79,6 +95,7 @@ export class ServicoOrganizacao {
       new Date(dados.dataCadastro),
       dados.ativo,
       this.reconstituirContrato(dados.contratoVigente),
+      dados.motivoDesativacao ?? null,
     );
   }
 
@@ -95,6 +112,12 @@ export class ServicoOrganizacao {
       dados.clausulas,
       dados.valorMensal,
       dados.renovacaoAutomatica,
+      dados.encerradoEm ? new Date(dados.encerradoEm) : null,
+      (dados.historicoRenovacoes ?? []).map((renovacao: any) => ({
+        dataVencimentoAnterior: new Date(renovacao.dataVencimentoAnterior),
+        dataVencimentoNovo: new Date(renovacao.dataVencimentoNovo),
+        registradoEm: new Date(renovacao.registradoEm),
+      })),
     );
   }
 }

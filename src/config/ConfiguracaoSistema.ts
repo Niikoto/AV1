@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
 
 export interface ConfiguracaoMestre {
@@ -34,10 +35,15 @@ export class ConfiguracaoSistema {
 
   salvar(configuracao: ConfiguracaoMestre): void {
     const diretorio = dirname(this.caminhoArquivo);
-    const caminhoTemporario = `${this.caminhoArquivo}.tmp-${process.pid}-${Date.now()}`;
+    const caminhoTemporario = `${this.caminhoArquivo}.tmp-${process.pid}-${randomUUID()}`;
 
     mkdirSync(diretorio, { recursive: true });
-    writeFileSync(caminhoTemporario, JSON.stringify(configuracao, null, 2), 'utf-8');
-    renameSync(caminhoTemporario, this.caminhoArquivo);
+    try {
+      writeFileSync(caminhoTemporario, JSON.stringify(configuracao, null, 2), 'utf-8');
+      renameSync(caminhoTemporario, this.caminhoArquivo);
+    } catch (erro) {
+      if (existsSync(caminhoTemporario)) unlinkSync(caminhoTemporario);
+      throw erro;
+    }
   }
 }

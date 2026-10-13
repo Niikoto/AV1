@@ -21,9 +21,11 @@ export class ServicoLote {
       throw new Error(this.validadorDataEntrada.obterMensagemErro());
     }
 
-    if (!this.repositorio.carregarEntidade('organizacoes', dados.organizacaoId)) {
+    const dadosOrganizacao = this.repositorio.carregarEntidade('organizacoes', dados.organizacaoId);
+    if (!dadosOrganizacao) {
       throw new Error('Não é possível criar lote para uma organização inexistente.');
     }
+    if (!dadosOrganizacao.ativo) throw new Error('Não é possível criar lote para uma organização desativada.');
 
     const lote = new Lote(
       dados.id,
@@ -42,6 +44,7 @@ export class ServicoLote {
 
   adicionarEquipamentoLote(loteId: string, equipamento: Equipamento): void {
     const lote = this.buscarLote(loteId);
+    lote.exigirAtivo();
 
     if (equipamento.loteId !== loteId) {
       throw new Error('O equipamento deve pertencer ao mesmo lote informado.');
@@ -50,6 +53,7 @@ export class ServicoLote {
     if (lote.equipamentos.some((item) => item.id === equipamento.id)) {
       throw new Error('O equipamento já pertence a este lote.');
     }
+    equipamento.exigirAtivo();
 
     equipamento.posicaoNoLote = lote.equipamentos.length + 1;
     lote.adicionarEquipamento(equipamento);
@@ -59,9 +63,13 @@ export class ServicoLote {
 
   processarTriagem(loteId: string): void {
     const lote = this.buscarLote(loteId);
+    lote.exigirAtivo();
 
     if (lote.equipamentos.length === 0) {
       throw new Error('Não é possível concluir a triagem de um lote sem equipamentos.');
+    }
+    if (lote.equipamentos.some((equipamento) => equipamento.cancelado)) {
+      throw new Error('Não é possível concluir a triagem enquanto o lote contém equipamento cancelado.');
     }
 
     lote.statusProcessamento = StatusLote.EM_TRIAGEM;
@@ -79,6 +87,15 @@ export class ServicoLote {
     return this.repositorio.listarEntidades('lotes')
       .map((dados) => this.reconstituirLote(dados))
       .filter((lote) => lote.dataEntrada >= dataInicio && lote.dataEntrada <= dataFim);
+  }
+
+  cancelarLote(loteId: string, motivo: string): void {
+    const lote = this.buscarLote(loteId);
+    if (lote.equipamentos.some((equipamento) => !equipamento.cancelado)) {
+      throw new Error('Cancele os equipamentos ainda ativos antes de cancelar o lote.');
+    }
+    lote.cancelar(motivo);
+    this.repositorio.salvarEntidade('lotes', lote);
   }
 
   private buscarLote(id: string): Lote {
@@ -101,6 +118,8 @@ export class ServicoLote {
       (dados.equipamentos ?? []).map((equipamento: any) => this.reconstituirEquipamento(equipamento)),
       dados.statusProcessamento,
       dados.observacoes,
+      dados.cancelado ?? false,
+      dados.motivoCancelamento ?? null,
     );
   }
 
@@ -126,6 +145,8 @@ export class ServicoLote {
         movimentacao.responsavel,
         movimentacao.observacao,
       )),
+      dados.cancelado ?? false,
+      dados.motivoCancelamento ?? null,
     );
   }
 }

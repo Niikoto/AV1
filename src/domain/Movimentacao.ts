@@ -1,11 +1,11 @@
 export class Movimentacao {
   constructor(
-    public id: string,
-    public equipamentoId: string,
-    public dataHora: Date,
-    public origem: string,
-    public destino: string,
-    public responsavel: string,
-    public observacao: string,
+    public readonly id: string,
+    public readonly equipamentoId: string,
+    public readonly dataHora: Date,
+    public readonly origem: string,
+    public readonly destino: string,
+    public readonly responsavel: string,
+    public readonly observacao: string,
   ) {}
 }

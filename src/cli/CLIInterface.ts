@@ -40,13 +40,32 @@ export class CLIInterface {
         this.exigirSessao(); this.exibirMenuPorPapel(this.sessaoAtual!.papel);
       } else if (comando === 'usuario' && acao === 'criar') {
         this.exigir('GERENCIAR_CREDENCIAIS');
-        this.autenticacao.criarCredencial(this.obrigatoria(opcoes, 'usuario'), this.obrigatoria(opcoes, 'senha'), this.enumObrigatorio(PapelUsuario, opcoes.papel, 'papel'));
+        this.autenticacao.criarCredencial(this.obrigatoria(opcoes, 'usuario'), this.obrigatoria(opcoes, 'senha'), this.enumObrigatorio(PapelUsuario, opcoes.papel, 'papel'), opcoes.nome ?? opcoes.usuario ?? '', this.sessaoAtual!.token);
         this.exibir('SUCESSO', 'Credencial criada.');
+      } else if (comando === 'usuario' && acao === 'listar') {
+        this.exigir('GERENCIAR_CREDENCIAIS');
+        this.exibir('INFO', JSON.stringify(this.autenticacao.listarCredenciais(this.sessaoAtual!.token), null, 2));
+      } else if (comando === 'usuario' && acao === 'consultar') {
+        this.exigir('GERENCIAR_CREDENCIAIS');
+        this.exibir('INFO', JSON.stringify(this.autenticacao.buscarCredencial(opcoes.usuario ?? opcoes.id ?? '', this.sessaoAtual!.token), null, 2));
+      } else if (comando === 'usuario' && acao === 'nome') {
+        this.exigir('GERENCIAR_CREDENCIAIS'); this.autenticacao.alterarNomeExibicao(this.obrigatoria(opcoes, 'usuario'), this.obrigatoria(opcoes, 'novo'), this.sessaoAtual!.token);
+        this.exibir('SUCESSO', 'Nome de exibição atualizado.');
+      } else if (comando === 'usuario' && acao === 'papel') {
+        this.exigir('GERENCIAR_CREDENCIAIS'); this.autenticacao.alterarPapel(this.obrigatoria(opcoes, 'usuario'), this.enumObrigatorio(PapelUsuario, opcoes.papel, 'papel'), this.sessaoAtual!.token);
+        this.exibir('SUCESSO', 'Papel atualizado; as sessões anteriores do usuário foram encerradas.');
+      } else if (comando === 'usuario' && acao === 'senha') {
+        this.exigir('GERENCIAR_CREDENCIAIS'); this.autenticacao.redefinirSenha(this.obrigatoria(opcoes, 'usuario'), this.obrigatoria(opcoes, 'nova'), this.sessaoAtual!.token);
+        this.exibir('SUCESSO', 'Senha redefinida; as sessões anteriores do usuário foram encerradas.');
+      } else if (comando === 'usuario' && acao === 'desativar') {
+        this.exigir('GERENCIAR_CREDENCIAIS'); this.autenticacao.desativarCredencial(this.obrigatoria(opcoes, 'usuario'), this.sessaoAtual!.token);
+        this.exibir('SUCESSO', 'Conta desativada e dados de autenticação removidos.');
       } else if (comando === 'senha' && acao === 'alterar') {
         this.exigirSessao();
-        const alterada = this.autenticacao.alterarSenha(this.sessaoAtual!.usuario, this.obrigatoria(opcoes, 'atual'), this.obrigatoria(opcoes, 'nova'));
+        const alterada = this.autenticacao.alterarSenha(this.sessaoAtual!.token, this.obrigatoria(opcoes, 'atual'), this.obrigatoria(opcoes, 'nova'));
         if (!alterada) throw new Error('Senha atual inválida ou nova senha ausente.');
-        this.exibir('SUCESSO', 'Senha alterada.');
+        this.sessaoAtual = null;
+        this.exibir('SUCESSO', 'Senha alterada. Entre novamente com a nova senha.');
       } else if (comando === 'org' && acao === 'criar') {
         this.exigir('GERENCIAR_ORGANIZACOES');
         this.organizacao.cadastrarOrganizacao({ id: this.obrigatoria(opcoes, 'id'), razaoSocial: this.obrigatoria(opcoes, 'razao'), cnpj: this.obrigatoria(opcoes, 'cnpj'), inscricaoEstadual: opcoes.ie ?? '', enderecoCompleto: opcoes.endereco ?? '', telefone: opcoes.telefone ?? '', email: opcoes.email ?? '', contratoVigente: null });
@@ -54,19 +73,31 @@ export class CLIInterface {
       } else if (comando === 'org' && acao === 'renovar-contrato') {
         this.exigir('GERENCIAR_CONTRATOS'); this.organizacao.renovarContrato(this.obrigatoria(opcoes, 'id'), this.dataObrigatoria(opcoes, 'vencimento'));
         this.exibir('SUCESSO', 'Contrato renovado.');
+      } else if (comando === 'org' && acao === 'desativar') {
+        this.exigir('GERENCIAR_ORGANIZACOES'); this.organizacao.desativarOrganizacao(this.obrigatoria(opcoes, 'id'), this.obrigatoria(opcoes, 'motivo'));
+        this.exibir('SUCESSO', 'Organização desativada; vínculos históricos preservados.');
+      } else if (comando === 'org' && acao === 'encerrar-contrato') {
+        this.exigir('GERENCIAR_CONTRATOS'); this.organizacao.encerrarContrato(this.obrigatoria(opcoes, 'id'));
+        this.exibir('SUCESSO', 'Contrato encerrado; dados históricos preservados.');
       } else if (comando === 'lote' && acao === 'criar') {
         this.exigir('GERENCIAR_LOTES');
         this.lote.criarLote({ id: this.obrigatoria(opcoes, 'id'), dataEntrada: opcoes.data ? this.dataObrigatoria(opcoes, 'data') : new Date(), organizacaoId: this.obrigatoria(opcoes, 'org'), notaFiscal: this.obrigatoria(opcoes, 'nf'), transportadora: this.obrigatoria(opcoes, 'transp'), observacoes: opcoes.obs ?? '' });
         this.exibir('SUCESSO', 'Lote criado.');
       } else if (comando === 'lote' && acao === 'triagem') {
         this.exigir('TRIAR_EQUIPAMENTOS'); this.lote.processarTriagem(this.obrigatoria(opcoes, 'id')); this.exibir('SUCESSO', 'Triagem concluída.');
+      } else if (comando === 'lote' && acao === 'cancelar') {
+        this.exigir('GERENCIAR_LOTES'); this.lote.cancelarLote(this.obrigatoria(opcoes, 'id'), this.obrigatoria(opcoes, 'motivo'));
+        this.exibir('SUCESSO', 'Lote cancelado; equipamentos e histórico preservados.');
       } else if (comando === 'equip' && acao === 'criar') {
         this.exigir('GERENCIAR_EQUIPAMENTOS');
         const tipo = this.enumObrigatorio(TipoEquipamento, opcoes.tipo, 'tipo');
         const novo = new Equipamento(this.obrigatoria(opcoes, 'id'), this.equipamento.gerarCodigoBarras(tipo, Date.now()), tipo, this.obrigatoria(opcoes, 'marca'), this.obrigatoria(opcoes, 'modelo'), this.numeroObrigatorio(opcoes, 'ano'), this.enumObrigatorio(EstadoFisico, opcoes.estado, 'estado'), this.numeroObrigatorio(opcoes, 'peso'), this.obrigatoria(opcoes, 'lote'), 0, StatusRastreamento.AGUARDANDO_TRIAGEM, []);
         this.lote.adicionarEquipamentoLote(novo.loteId, novo); this.exibir('SUCESSO', `Equipamento cadastrado com código ${novo.codigoBarrasInterno}.`);
       } else if (comando === 'equip' && acao === 'mover') {
-        this.exigir('GERENCIAR_EQUIPAMENTOS'); this.equipamento.registrarMovimentacao(this.obrigatoria(opcoes, 'id'), this.obrigatoria(opcoes, 'destino'), this.sessaoAtual!.usuario); this.exibir('SUCESSO', 'Movimentação registrada.');
+        this.exigir('GERENCIAR_EQUIPAMENTOS'); this.equipamento.registrarMovimentacao(this.obrigatoria(opcoes, 'id'), this.obrigatoria(opcoes, 'destino'), this.sessaoAtual!.usuarioId || this.sessaoAtual!.usuario); this.exibir('SUCESSO', 'Movimentação registrada.');
+      } else if (comando === 'equip' && acao === 'cancelar') {
+        this.exigir('GERENCIAR_EQUIPAMENTOS'); this.equipamento.cancelarEquipamento(this.obrigatoria(opcoes, 'id'), this.obrigatoria(opcoes, 'motivo'));
+        this.exibir('SUCESSO', 'Cadastro cancelado; equipamento e histórico preservados.');
       } else if (comando === 'equip' && acao === 'estado') {
         this.exigir('GERENCIAR_EQUIPAMENTOS'); this.equipamento.atualizarEstadoFisico(this.obrigatoria(opcoes, 'id'), this.enumObrigatorio(EstadoFisico, opcoes.estado, 'estado'), opcoes.justificativa ?? ''); this.exibir('SUCESSO', 'Estado físico atualizado.');
       } else if (comando === 'rastrear') {
@@ -85,10 +116,10 @@ export class CLIInterface {
 
   exibirMenuPorPapel(papel: PapelUsuario): void {
     const menus: Record<PapelUsuario, string[]> = {
-      ADMINISTRADOR: ['usuario criar', 'senha alterar', 'org criar', 'org renovar-contrato', 'lote criar', 'lote triagem', 'equip criar', 'equip mover', 'equip estado', 'rastrear', 'relatorio status/organizacao/financeiro'],
-      OPERADOR_CADASTRO: ['senha alterar', 'org criar', 'org renovar-contrato'],
-      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar', 'lote triagem', 'equip criar', 'equip mover', 'equip estado'],
-      AUDITOR: ['senha alterar', 'rastrear', 'relatorio status/organizacao/financeiro'],
+      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar', 'org desativar', 'org renovar-contrato', 'org encerrar-contrato', 'lote criar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado', 'rastrear', 'relatorio status/organizacao/financeiro'],
+      OPERADOR_CADASTRO: ['senha alterar', 'org criar', 'org desativar', 'org renovar-contrato', 'org encerrar-contrato'],
+      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado'],
+      AUDITOR: ['rastrear', 'relatorio status/organizacao/financeiro'],
     };
     this.exibir('INFO', `Opções: ${menus[papel].join(' | ')}`);
   }
@@ -107,20 +138,20 @@ export class CLIInterface {
   private comandosDisponiveis(): string[] {
     if (!this.sessaoAtual) return this.comandosPublicos;
     const porPapel: Record<PapelUsuario, string[]> = {
-      ADMINISTRADOR: ['usuario criar', 'senha alterar', 'org criar', 'org renovar-contrato', 'lote criar', 'lote triagem', 'equip criar', 'equip mover', 'equip estado', 'rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
-      OPERADOR_CADASTRO: ['senha alterar', 'org criar', 'org renovar-contrato'],
-      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar', 'lote triagem', 'equip criar', 'equip mover', 'equip estado'],
-      AUDITOR: ['senha alterar', 'rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
+      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar', 'org desativar', 'org renovar-contrato', 'org encerrar-contrato', 'lote criar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado', 'rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
+      OPERADOR_CADASTRO: ['senha alterar', 'org criar', 'org desativar', 'org renovar-contrato', 'org encerrar-contrato'],
+      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado'],
+      AUDITOR: ['rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
     };
     return [...this.comandosPublicos, ...porPapel[this.sessaoAtual.papel]];
   }
 
   private exibirAjuda(): void {
     this.exibir('INFO', [
-      'login USUARIO --senha SENHA', 'usuario criar --usuario USUARIO --senha SENHA --papel PAPEL', 'senha alterar --atual SENHA --nova SENHA',
-      'org criar --id ID --razao "RAZÃO" --cnpj CNPJ [--ie IE --endereco "ENDEREÇO" --telefone TEL --email EMAIL]', 'org renovar-contrato --id ORG --vencimento AAAA-MM-DD',
-      'lote criar --id ID --org ORG --nf NF --transp TRANSPORTADORA [--data AAAA-MM-DD --obs "TEXTO"]', 'lote triagem --id LOTE',
-      'equip criar --id ID --lote LOTE --tipo TIPO --marca MARCA --modelo MODELO --ano ANO --estado ESTADO --peso KG', 'equip mover --id EQUIPAMENTO --destino DESTINO', 'equip estado --id EQUIPAMENTO --estado ESTADO [--justificativa "TEXTO"]',
+      'login USUARIO --senha SENHA', 'usuario criar --usuario LOGIN --nome "NOME" --senha SENHA --papel PAPEL', 'usuario listar', 'usuario consultar --usuario LOGIN | --id ID', 'usuario nome --usuario LOGIN --novo "NOME"', 'usuario papel --usuario LOGIN --papel PAPEL', 'usuario senha --usuario LOGIN --nova SENHA', 'usuario desativar --usuario LOGIN', 'senha alterar --atual SENHA --nova SENHA',
+      'org criar --id ID --razao "RAZÃO" --cnpj CNPJ [--ie IE --endereco "ENDEREÇO" --telefone TEL --email EMAIL]', 'org desativar --id ORG --motivo "MOTIVO"', 'org renovar-contrato --id ORG --vencimento AAAA-MM-DD', 'org encerrar-contrato --id ORG',
+      'lote criar --id ID --org ORG --nf NF --transp TRANSPORTADORA [--data AAAA-MM-DD --obs "TEXTO"]', 'lote triagem --id LOTE', 'lote cancelar --id LOTE --motivo "MOTIVO"',
+      'equip criar --id ID --lote LOTE --tipo TIPO --marca MARCA --modelo MODELO --ano ANO --estado ESTADO --peso KG', 'equip mover --id EQUIPAMENTO --destino DESTINO', 'equip estado --id EQUIPAMENTO --estado ESTADO [--justificativa "TEXTO"]', 'equip cancelar --id EQUIPAMENTO --motivo "MOTIVO"',
       'rastrear EQUIPAMENTO', 'relatorio status --status STATUS | relatorio organizacao --org ORG --inicio AAAA-MM-DD --fim AAAA-MM-DD | relatorio financeiro --inicio AAAA-MM-DD --fim AAAA-MM-DD',
       `Papéis: ${Object.values(PapelUsuario).join(', ')}`, `Estados: ${Object.values(EstadoFisico).join(', ')}`,
     ].join('\n'));
@@ -137,7 +168,7 @@ export class CLIInterface {
   private extrairOpcoes(tokens: string[]): Record<string, string> { const opcoes: Record<string, string> = {}; for (let indice = 0; indice < tokens.length; indice += 2) if (tokens[indice]?.startsWith('--')) opcoes[tokens[indice].slice(2)] = tokens[indice + 1] ?? ''; return opcoes; }
   private carregarHistorico(): void { if (this.interface && existsSync(this.caminhoHistorico)) (this.interface as Interface & { history: string[] }).history = readFileSync(this.caminhoHistorico, 'utf-8').split(/\r?\n/).filter(Boolean).reverse(); }
   private salvarHistorico(comando: string): void {
-    if (/^(login|usuario criar|senha alterar)\b/i.test(comando.trim())) return;
+    if (/^(login|usuario criar|usuario senha|senha alterar)\b/i.test(comando.trim())) return;
     mkdirSync('data', { recursive: true });
     appendFileSync(this.caminhoHistorico, `${comando}\n`, 'utf-8');
   }

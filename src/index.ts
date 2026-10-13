@@ -6,6 +6,7 @@ import { CLIInterface } from './cli/CLIInterface.js';
 import { ConfiguracaoSistema } from './config/ConfiguracaoSistema.js';
 import { ProvisionamentoInicial } from './config/ProvisionamentoInicial.js';
 import { CriptografiaArquivo } from './infra/CriptografiaArquivo.js';
+import { JournalTransacao } from './infra/JournalTransacao.js';
 import { RepositorioArquivo } from './infra/RepositorioArquivo.js';
 import { ServicoAutenticacao } from './services/ServicoAutenticacao.js';
 import { ServicoEquipamento } from './services/ServicoEquipamento.js';
@@ -30,6 +31,11 @@ const chaveMestra = primeiroProvisionamento
   ? provisionamento.provisionar(senhaDesbloqueio)
   : provisionamento.obterChaveMestra(senhaDesbloqueio);
 const repositorio = new RepositorioArquivo('data', criptografia, chaveMestra);
+repositorio.limparTemporariosOrfaos();
+const transacoesRecuperadas = JournalTransacao.recuperarPendentes(repositorio);
+if (transacoesRecuperadas > 0) {
+  console.log(`[INFO] ${transacoesRecuperadas} transação(ões) pendente(s) recuperada(s).`);
+}
 const autenticacao = new ServicoAutenticacao(repositorio);
 
 if (primeiroProvisionamento) {

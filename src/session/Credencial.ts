@@ -10,10 +10,13 @@ export class Credencial implements Autenticavel {
     public salt: string,
     public ultimoAcesso: Date,
     public papel: PapelUsuario,
+    public nomeExibicao = usuario,
+    public id = randomUUID(),
+    public ativo = true,
   ) {}
 
   autenticar(usuario: string, senha: string): boolean {
-    return this.usuario === usuario && this.verificarSenha(senha);
+    return this.ativo && this.usuario === usuario && this.verificarSenha(senha);
   }
 
   renovarToken(): string {
@@ -21,6 +24,7 @@ export class Credencial implements Autenticavel {
   }
 
   verificarSenha(senhaPlana: string): boolean {
+    if (!this.ativo || !this.hashSenha || !this.salt) return false;
     const hashInformado = createHash('sha256')
       .update(`${this.salt}:${senhaPlana}`, 'utf-8')
       .digest('hex');
@@ -30,5 +34,13 @@ export class Credencial implements Autenticavel {
 
   atualizarUltimoAcesso(): void {
     this.ultimoAcesso = new Date();
+  }
+
+  desativar(): void {
+    this.ativo = false;
+    this.usuario = '';
+    this.nomeExibicao = '';
+    this.hashSenha = '';
+    this.salt = '';
   }
 }

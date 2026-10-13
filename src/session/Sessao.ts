@@ -10,6 +10,7 @@ export class Sessao implements Autenticavel {
     public papel: PapelUsuario,
     public criacao: Date,
     public expiracao: Date,
+    public usuarioId = '',
   ) {}
 
   autenticar(usuario: string, senha: string): boolean {

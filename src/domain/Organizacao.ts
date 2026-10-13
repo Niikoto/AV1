@@ -12,13 +12,16 @@ export class Organizacao {
     public dataCadastro: Date,
     public ativo: boolean,
     public contratoVigente: Contrato | null,
+    public motivoDesativacao: string | null = null,
   ) {}
 
   alterarEndereco(novoEndereco: string): void {
     this.enderecoCompleto = novoEndereco;
   }
 
-  desativar(): void {
+  desativar(motivo = ''): void {
+    if (!motivo.trim()) throw new Error('Informe o motivo da desativação da organização.');
     this.ativo = false;
+    this.motivoDesativacao = motivo.trim();
   }
 }

@@ -12,10 +12,24 @@ export class Lote {
     public equipamentos: Equipamento[],
     public statusProcessamento: StatusLote,
     public observacoes: string,
+    public cancelado = false,
+    public motivoCancelamento: string | null = null,
   ) {}
 
   adicionarEquipamento(equip: Equipamento): void {
+    this.exigirAtivo();
     this.equipamentos.push(equip);
+  }
+
+  cancelar(motivo: string): void {
+    if (!motivo.trim()) throw new Error('Informe o motivo do cancelamento do lote.');
+    if (this.cancelado) throw new Error('O lote já está cancelado.');
+    this.cancelado = true;
+    this.motivoCancelamento = motivo.trim();
+  }
+
+  exigirAtivo(): void {
+    if (this.cancelado) throw new Error('O lote está cancelado e não aceita novas operações.');
   }
 
   removerEquipamento(equipId: string): boolean {
@@ -25,8 +39,7 @@ export class Lote {
       return false;
     }
 
-    this.equipamentos.splice(indice, 1);
-    return true;
+    throw new Error('Equipamentos vinculados não são removidos do lote; cancele o cadastro para preservar o histórico.');
   }
 
   calcularPesoTotal(): number {

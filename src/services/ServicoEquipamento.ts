@@ -56,6 +56,8 @@ export class ServicoEquipamento {
     }
 
     const equipamento = this.reconstituirEquipamento(dados);
+    equipamento.exigirAtivo();
+    this.exigirLoteAtivo(equipamento);
     const ordem: Record<EstadoFisico, number> = {
       [EstadoFisico.NOVO]: 0,
       [EstadoFisico.BOM_ESTADO]: 1,
@@ -86,7 +88,19 @@ export class ServicoEquipamento {
     }
 
     const equipamento = this.reconstituirEquipamento(dados);
+    equipamento.exigirAtivo();
+    this.exigirLoteAtivo(equipamento);
     equipamento.registrarMovimentacao(destino, responsavel);
+    this.repositorio.salvarEntidade('equipamentos', equipamento);
+    this.atualizarEquipamentoNoLote(equipamento);
+  }
+
+  cancelarEquipamento(id: string, motivo: string): void {
+    const dados = this.repositorio.carregarEntidade('equipamentos', id);
+    if (!dados) throw new Error('Equipamento não encontrado.');
+    const equipamento = this.reconstituirEquipamento(dados);
+    this.exigirLoteAtivo(equipamento);
+    equipamento.cancelar(motivo);
     this.repositorio.salvarEntidade('equipamentos', equipamento);
     this.atualizarEquipamentoNoLote(equipamento);
   }
@@ -115,6 +129,12 @@ export class ServicoEquipamento {
     }
   }
 
+  private exigirLoteAtivo(equipamento: Equipamento): void {
+    const lote = this.repositorio.carregarEntidade('lotes', equipamento.loteId);
+    if (!lote) throw new Error('Lote associado ao equipamento não encontrado.');
+    if (lote.cancelado) throw new Error('O lote está cancelado e não aceita operações nos equipamentos.');
+  }
+
   private reconstituirEquipamento(dados: any): Equipamento {
     return new Equipamento(
       dados.id,
@@ -137,6 +157,8 @@ export class ServicoEquipamento {
         movimentacao.responsavel,
         movimentacao.observacao,
       )),
+      dados.cancelado ?? false,
+      dados.motivoCancelamento ?? null,
     );
   }
 
@@ -150,6 +172,8 @@ export class ServicoEquipamento {
       (dados.equipamentos ?? []).map((equipamento: any) => this.reconstituirEquipamento(equipamento)),
       dados.statusProcessamento as StatusLote,
       dados.observacoes,
+      dados.cancelado ?? false,
+      dados.motivoCancelamento ?? null,
     );
   }
 
@@ -165,6 +189,7 @@ export class ServicoEquipamento {
       new Date(dados.dataCadastro),
       dados.ativo,
       null,
+      dados.motivoDesativacao ?? null,
     );
   }
 }
