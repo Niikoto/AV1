@@ -84,9 +84,47 @@ export class ServicoLote {
   }
 
   consultarLotePorPeriodo(dataInicio: Date, dataFim: Date): Lote[] {
+    return this.listarLotes({ dataInicio, dataFim });
+  }
+
+  consultarLote(id: string): Lote {
+    return this.buscarLote(id);
+  }
+
+  listarLotes(filtros: { organizacaoId?: string; dataInicio?: Date; dataFim?: Date; status?: StatusLote; incluirCancelados?: boolean } = {}): Lote[] {
+    if (filtros.dataInicio && Number.isNaN(filtros.dataInicio.getTime())) throw new Error('A data inicial do filtro é inválida.');
+    if (filtros.dataFim && Number.isNaN(filtros.dataFim.getTime())) throw new Error('A data final do filtro é inválida.');
+    if (filtros.dataInicio && filtros.dataFim && filtros.dataInicio > filtros.dataFim) throw new Error('A data inicial não pode ser posterior à data final.');
     return this.repositorio.listarEntidades('lotes')
       .map((dados) => this.reconstituirLote(dados))
-      .filter((lote) => lote.dataEntrada >= dataInicio && lote.dataEntrada <= dataFim);
+      .filter((lote) => filtros.incluirCancelados || !lote.cancelado)
+      .filter((lote) => !filtros.organizacaoId || lote.organizacaoId === filtros.organizacaoId)
+      .filter((lote) => !filtros.dataInicio || lote.dataEntrada >= filtros.dataInicio)
+      .filter((lote) => !filtros.dataFim || lote.dataEntrada <= filtros.dataFim)
+      .filter((lote) => !filtros.status || lote.statusProcessamento === filtros.status);
+  }
+
+  atualizarLote(id: string, dados: { dataEntrada?: Date; notaFiscal?: string; transportadora?: string; observacoes?: string }): Lote {
+    const lote = this.buscarLote(id);
+    lote.exigirAtivo();
+    if (lote.equipamentos.length > 0 || lote.statusProcessamento !== StatusLote.RECEBIDO) {
+      throw new Error('Só é possível editar um lote recebido que ainda não tenha equipamentos vinculados.');
+    }
+    if (dados.dataEntrada !== undefined) {
+      if (!this.validadorDataEntrada.validar(dados.dataEntrada)) throw new Error(this.validadorDataEntrada.obterMensagemErro());
+      lote.dataEntrada = dados.dataEntrada;
+    }
+    if (dados.notaFiscal !== undefined) {
+      if (!dados.notaFiscal.trim()) throw new Error('A nota fiscal é obrigatória.');
+      lote.notaFiscal = dados.notaFiscal.trim();
+    }
+    if (dados.transportadora !== undefined) {
+      if (!dados.transportadora.trim()) throw new Error('A transportadora é obrigatória.');
+      lote.transportadora = dados.transportadora.trim();
+    }
+    if (dados.observacoes !== undefined) lote.observacoes = dados.observacoes.trim();
+    this.repositorio.salvarEntidade('lotes', lote);
+    return lote;
   }
 
   cancelarLote(loteId: string, motivo: string): void {

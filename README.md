@@ -48,7 +48,7 @@ Use `ajuda` dentro da aplicação para ver todos os comandos disponíveis e `men
 | Papel | Responsabilidades |
 | --- | --- |
 | `ADMINISTRADOR` | gerencia credenciais e acessa todas as operações disponíveis |
-| `OPERADOR_CADASTRO` | cadastra organizações e renova contratos |
+| `OPERADOR_CADASTRO` | mantém organizações e contratos |
 | `GESTOR_ALMOXARIFADO` | cria lotes, realiza triagem e registra equipamentos e movimentações |
 | `AUDITOR` | consulta rastreabilidade e gera relatórios |
 
@@ -66,9 +66,17 @@ As permissões são verificadas tanto no menu quanto antes da execução do serv
 | `usuario senha --usuario U --nova SENHA` / `usuario desativar --usuario U` | redefine senha ou desativa conta (administrador) |
 | `senha alterar --atual S --nova N` | altera a senha do usuário autenticado |
 | `org criar ...` | cadastra uma organização |
+| `org listar [--todas true]` / `org consultar --id ORG` | consulta organizações ativas ou inclui desativadas na listagem |
+| `org atualizar --id ORG --razao RAZAO --cnpj CNPJ [...]` / `org desativar --id ORG --motivo MOTIVO` | atualiza dados cadastrais ou desativa sem apagar vínculos históricos |
+| `contrato criar --org ORG --id CONTRATO --assinatura DATA --vencimento DATA --valor VALOR [...]` | registra o primeiro contrato ou um novo contrato após encerramento |
+| `contrato listar --org ORG` / `contrato atualizar --org ORG --id CONTRATO [...]` | consulta ou altera contrato ainda não encerrado |
+| `contrato cancelar --org ORG --id CONTRATO` / `org encerrar-contrato --id ORG` | encerra contrato preservando o histórico |
 | `org renovar-contrato --id ORG --vencimento AAAA-MM-DD` | renova o contrato existente |
 | `lote criar ...` | registra um lote de entrada |
+| `lote listar [--org ORG --inicio DATA --fim DATA --status STATUS --todos true]` / `lote consultar --id LOTE` | consulta lotes com filtros; cancelados entram somente com `--todos true` |
+| `lote atualizar --id LOTE [...]` | corrige dados de um lote recebido ainda sem equipamentos, sem alterar a organização vinculada |
 | `lote triagem --id LOTE` | conclui a triagem do lote |
+| `lote cancelar --id LOTE --motivo MOTIVO` | cancela sem apagar o lote; equipamentos ativos precisam ser cancelados antes |
 | `equip criar ...` | cadastra equipamento em um lote |
 | `equip mover --id EQ --destino LOCAL` | registra movimentação |
 | `equip estado --id EQ --estado ESTADO --justificativa "TEXTO"` | atualiza estado físico |

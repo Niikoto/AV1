@@ -12,6 +12,7 @@ import { Sessao } from '../session/Sessao.js';
 import { EstadoFisico } from '../types/EstadoFisico.js';
 import { PapelUsuario } from '../types/PapelUsuario.js';
 import { StatusRastreamento } from '../types/StatusRastreamento.js';
+import { StatusLote } from '../types/StatusLote.js';
 import { TipoEquipamento } from '../types/TipoEquipamento.js';
 
 type NivelMensagem = 'SUCESSO' | 'ERRO' | 'INFO';
@@ -70,9 +71,27 @@ export class CLIInterface {
         this.exigir('GERENCIAR_ORGANIZACOES');
         this.organizacao.cadastrarOrganizacao({ id: this.obrigatoria(opcoes, 'id'), razaoSocial: this.obrigatoria(opcoes, 'razao'), cnpj: this.obrigatoria(opcoes, 'cnpj'), inscricaoEstadual: opcoes.ie ?? '', enderecoCompleto: opcoes.endereco ?? '', telefone: opcoes.telefone ?? '', email: opcoes.email ?? '', contratoVigente: null });
         this.exibir('SUCESSO', 'Organização cadastrada.');
+      } else if (comando === 'org' && acao === 'listar') {
+        this.exigir('GERENCIAR_ORGANIZACOES'); this.exibir('INFO', JSON.stringify(this.organizacao.listarOrganizacoes(opcoes.todas === 'true'), null, 2));
+      } else if (comando === 'org' && acao === 'consultar') {
+        this.exigir('GERENCIAR_ORGANIZACOES'); this.exibir('INFO', JSON.stringify(this.organizacao.buscarOrganizacao(this.obrigatoria(opcoes, 'id')), null, 2));
+      } else if (comando === 'org' && acao === 'atualizar') {
+        this.exigir('GERENCIAR_ORGANIZACOES'); this.organizacao.atualizarOrganizacao(this.obrigatoria(opcoes, 'id'), { razaoSocial: this.obrigatoria(opcoes, 'razao'), cnpj: this.obrigatoria(opcoes, 'cnpj'), inscricaoEstadual: opcoes.ie, enderecoCompleto: opcoes.endereco, telefone: opcoes.telefone, email: opcoes.email });
+        this.exibir('SUCESSO', 'Organização atualizada; os dados anteriores permanecem no journal.');
       } else if (comando === 'org' && acao === 'renovar-contrato') {
         this.exigir('GERENCIAR_CONTRATOS'); this.organizacao.renovarContrato(this.obrigatoria(opcoes, 'id'), this.dataObrigatoria(opcoes, 'vencimento'));
         this.exibir('SUCESSO', 'Contrato renovado.');
+      } else if (comando === 'contrato' && acao === 'criar') {
+        this.exigir('GERENCIAR_CONTRATOS'); this.organizacao.cadastrarContrato(this.obrigatoria(opcoes, 'org'), { id: this.obrigatoria(opcoes, 'id'), dataAssinatura: this.dataObrigatoria(opcoes, 'assinatura'), dataVencimento: this.dataObrigatoria(opcoes, 'vencimento'), clausulas: (opcoes.clausulas ?? '').split('|').map((item) => item.trim()).filter(Boolean), valorMensal: this.numeroObrigatorio(opcoes, 'valor'), renovacaoAutomatica: opcoes.renovacao === 'true' });
+        this.exibir('SUCESSO', 'Contrato cadastrado.');
+      } else if (comando === 'contrato' && acao === 'listar') {
+        this.exigir('GERENCIAR_CONTRATOS'); this.exibir('INFO', JSON.stringify(this.organizacao.listarContratos(this.obrigatoria(opcoes, 'org')), null, 2));
+      } else if (comando === 'contrato' && acao === 'atualizar') {
+        this.exigir('GERENCIAR_CONTRATOS'); this.organizacao.atualizarContrato(this.obrigatoria(opcoes, 'org'), this.obrigatoria(opcoes, 'id'), { clausulas: opcoes.clausulas?.split('|').map((item) => item.trim()).filter(Boolean), valorMensal: opcoes.valor === undefined ? undefined : this.numeroObrigatorio(opcoes, 'valor'), renovacaoAutomatica: opcoes.renovacao === undefined ? undefined : opcoes.renovacao === 'true' });
+        this.exibir('SUCESSO', 'Contrato atualizado; o estado anterior permanece no journal.');
+      } else if (comando === 'contrato' && acao === 'cancelar') {
+        this.exigir('GERENCIAR_CONTRATOS'); this.organizacao.cancelarContrato(this.obrigatoria(opcoes, 'org'), this.obrigatoria(opcoes, 'id'));
+        this.exibir('SUCESSO', 'Contrato encerrado; dados históricos preservados.');
       } else if (comando === 'org' && acao === 'desativar') {
         this.exigir('GERENCIAR_ORGANIZACOES'); this.organizacao.desativarOrganizacao(this.obrigatoria(opcoes, 'id'), this.obrigatoria(opcoes, 'motivo'));
         this.exibir('SUCESSO', 'Organização desativada; vínculos históricos preservados.');
@@ -83,6 +102,17 @@ export class CLIInterface {
         this.exigir('GERENCIAR_LOTES');
         this.lote.criarLote({ id: this.obrigatoria(opcoes, 'id'), dataEntrada: opcoes.data ? this.dataObrigatoria(opcoes, 'data') : new Date(), organizacaoId: this.obrigatoria(opcoes, 'org'), notaFiscal: this.obrigatoria(opcoes, 'nf'), transportadora: this.obrigatoria(opcoes, 'transp'), observacoes: opcoes.obs ?? '' });
         this.exibir('SUCESSO', 'Lote criado.');
+      } else if (comando === 'lote' && acao === 'consultar') {
+        this.exigir('GERENCIAR_LOTES'); this.exibir('INFO', JSON.stringify(this.lote.consultarLote(this.obrigatoria(opcoes, 'id')), null, 2));
+      } else if (comando === 'lote' && acao === 'listar') {
+        this.exigir('GERENCIAR_LOTES');
+        const inicio = opcoes.inicio ? this.dataObrigatoria(opcoes, 'inicio') : undefined;
+        const fim = opcoes.fim ? this.dataObrigatoria(opcoes, 'fim') : undefined;
+        if (fim) fim.setHours(23, 59, 59, 999);
+        this.exibir('INFO', JSON.stringify(this.lote.listarLotes({ organizacaoId: opcoes.org, dataInicio: inicio, dataFim: fim, status: opcoes.status ? this.enumObrigatorio(StatusLote, opcoes.status, 'status') : undefined, incluirCancelados: opcoes.todos === 'true' }), null, 2));
+      } else if (comando === 'lote' && acao === 'atualizar') {
+        this.exigir('GERENCIAR_LOTES'); this.lote.atualizarLote(this.obrigatoria(opcoes, 'id'), { dataEntrada: opcoes.data ? this.dataObrigatoria(opcoes, 'data') : undefined, notaFiscal: opcoes.nf, transportadora: opcoes.transp, observacoes: opcoes.obs });
+        this.exibir('SUCESSO', 'Lote atualizado; a organização vinculada e os registros anteriores foram preservados.');
       } else if (comando === 'lote' && acao === 'triagem') {
         this.exigir('TRIAR_EQUIPAMENTOS'); this.lote.processarTriagem(this.obrigatoria(opcoes, 'id')); this.exibir('SUCESSO', 'Triagem concluída.');
       } else if (comando === 'lote' && acao === 'cancelar') {
@@ -116,9 +146,9 @@ export class CLIInterface {
 
   exibirMenuPorPapel(papel: PapelUsuario): void {
     const menus: Record<PapelUsuario, string[]> = {
-      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar', 'org desativar', 'org renovar-contrato', 'org encerrar-contrato', 'lote criar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado', 'rastrear', 'relatorio status/organizacao/financeiro'],
-      OPERADOR_CADASTRO: ['senha alterar', 'org criar', 'org desativar', 'org renovar-contrato', 'org encerrar-contrato'],
-      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado'],
+      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar/listar/consultar/atualizar/desativar', 'contrato criar/listar/atualizar/cancelar/renovar/encerrar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado', 'rastrear', 'relatorio status/organizacao/financeiro'],
+      OPERADOR_CADASTRO: ['senha alterar', 'org criar/listar/consultar/atualizar/desativar', 'contrato criar/listar/atualizar/cancelar/renovar/encerrar'],
+      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado'],
       AUDITOR: ['rastrear', 'relatorio status/organizacao/financeiro'],
     };
     this.exibir('INFO', `Opções: ${menus[papel].join(' | ')}`);
@@ -138,9 +168,9 @@ export class CLIInterface {
   private comandosDisponiveis(): string[] {
     if (!this.sessaoAtual) return this.comandosPublicos;
     const porPapel: Record<PapelUsuario, string[]> = {
-      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar', 'org desativar', 'org renovar-contrato', 'org encerrar-contrato', 'lote criar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado', 'rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
-      OPERADOR_CADASTRO: ['senha alterar', 'org criar', 'org desativar', 'org renovar-contrato', 'org encerrar-contrato'],
-      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado'],
+      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar', 'org listar', 'org consultar', 'org atualizar', 'org desativar', 'contrato criar', 'contrato listar', 'contrato atualizar', 'contrato cancelar', 'org renovar-contrato', 'org encerrar-contrato', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado', 'rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
+      OPERADOR_CADASTRO: ['senha alterar', 'org criar', 'org listar', 'org consultar', 'org atualizar', 'org desativar', 'contrato criar', 'contrato listar', 'contrato atualizar', 'contrato cancelar', 'org renovar-contrato', 'org encerrar-contrato'],
+      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip cancelar', 'equip mover', 'equip estado'],
       AUDITOR: ['rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
     };
     return [...this.comandosPublicos, ...porPapel[this.sessaoAtual.papel]];
@@ -149,8 +179,9 @@ export class CLIInterface {
   private exibirAjuda(): void {
     this.exibir('INFO', [
       'login USUARIO --senha SENHA', 'usuario criar --usuario LOGIN --nome "NOME" --senha SENHA --papel PAPEL', 'usuario listar', 'usuario consultar --usuario LOGIN | --id ID', 'usuario nome --usuario LOGIN --novo "NOME"', 'usuario papel --usuario LOGIN --papel PAPEL', 'usuario senha --usuario LOGIN --nova SENHA', 'usuario desativar --usuario LOGIN', 'senha alterar --atual SENHA --nova SENHA',
-      'org criar --id ID --razao "RAZÃO" --cnpj CNPJ [--ie IE --endereco "ENDEREÇO" --telefone TEL --email EMAIL]', 'org desativar --id ORG --motivo "MOTIVO"', 'org renovar-contrato --id ORG --vencimento AAAA-MM-DD', 'org encerrar-contrato --id ORG',
-      'lote criar --id ID --org ORG --nf NF --transp TRANSPORTADORA [--data AAAA-MM-DD --obs "TEXTO"]', 'lote triagem --id LOTE', 'lote cancelar --id LOTE --motivo "MOTIVO"',
+      'org criar --id ID --razao "RAZÃO" --cnpj CNPJ [--ie IE --endereco "ENDEREÇO" --telefone TEL --email EMAIL]', 'org listar [--todas true]', 'org consultar --id ORG', 'org atualizar --id ORG --razao "RAZÃO" --cnpj CNPJ [--ie IE --endereco "ENDEREÇO" --telefone TEL --email EMAIL]', 'org desativar --id ORG --motivo "MOTIVO"', 'org renovar-contrato --id ORG --vencimento AAAA-MM-DD', 'org encerrar-contrato --id ORG',
+      'contrato criar --org ORG --id CONTRATO --assinatura AAAA-MM-DD --vencimento AAAA-MM-DD --valor VALOR [--clausulas "A|B" --renovacao true]', 'contrato listar --org ORG', 'contrato atualizar --org ORG --id CONTRATO [--valor VALOR --clausulas "A|B" --renovacao true|false]', 'contrato cancelar --org ORG --id CONTRATO',
+      'lote criar --id ID --org ORG --nf NF --transp TRANSPORTADORA [--data AAAA-MM-DD --obs "TEXTO"]', 'lote listar [--org ORG --inicio AAAA-MM-DD --fim AAAA-MM-DD --status STATUS --todos true]', 'lote consultar --id LOTE', 'lote atualizar --id LOTE [--data AAAA-MM-DD --nf NF --transp TRANSPORTADORA --obs "TEXTO"]', 'lote triagem --id LOTE', 'lote cancelar --id LOTE --motivo "MOTIVO"',
       'equip criar --id ID --lote LOTE --tipo TIPO --marca MARCA --modelo MODELO --ano ANO --estado ESTADO --peso KG', 'equip mover --id EQUIPAMENTO --destino DESTINO', 'equip estado --id EQUIPAMENTO --estado ESTADO [--justificativa "TEXTO"]', 'equip cancelar --id EQUIPAMENTO --motivo "MOTIVO"',
       'rastrear EQUIPAMENTO', 'relatorio status --status STATUS | relatorio organizacao --org ORG --inicio AAAA-MM-DD --fim AAAA-MM-DD | relatorio financeiro --inicio AAAA-MM-DD --fim AAAA-MM-DD',
       `Papéis: ${Object.values(PapelUsuario).join(', ')}`, `Estados: ${Object.values(EstadoFisico).join(', ')}`,
