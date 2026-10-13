@@ -135,11 +135,17 @@ export class CLIInterface {
         this.exibir('SUCESSO', 'Status atualizado e registrado no histórico do equipamento.');
       } else if (comando === 'equip' && acao === 'mover') {
         this.exigir('GERENCIAR_EQUIPAMENTOS'); this.equipamento.registrarMovimentacao(this.obrigatoria(opcoes, 'id'), this.obrigatoria(opcoes, 'destino'), this.sessaoAtual!.usuarioId || this.sessaoAtual!.usuario); this.exibir('SUCESSO', 'Movimentação registrada.');
+      } else if (comando === 'equip' && acao === 'corrigir-movimentacao') {
+        this.exigir('GERENCIAR_EQUIPAMENTOS'); this.equipamento.corrigirMovimentacao(this.obrigatoria(opcoes, 'id'), this.obrigatoria(opcoes, 'mov'), this.obrigatoria(opcoes, 'destino'), this.sessaoAtual!.usuarioId || this.sessaoAtual!.usuario, this.obrigatoria(opcoes, 'justificativa'));
+        this.exibir('SUCESSO', 'Correção registrada como novo evento; a movimentação original foi mantida.');
+      } else if (comando === 'equip' && acao === 'estornar-movimentacao') {
+        this.exigir('GERENCIAR_EQUIPAMENTOS'); this.equipamento.estornarMovimentacao(this.obrigatoria(opcoes, 'id'), this.obrigatoria(opcoes, 'mov'), this.sessaoAtual!.usuarioId || this.sessaoAtual!.usuario, this.obrigatoria(opcoes, 'justificativa'));
+        this.exibir('SUCESSO', 'Estorno registrado como novo evento; a movimentação original foi mantida.');
       } else if (comando === 'equip' && acao === 'cancelar') {
-        this.exigir('GERENCIAR_EQUIPAMENTOS'); this.equipamento.cancelarEquipamento(this.obrigatoria(opcoes, 'id'), this.obrigatoria(opcoes, 'motivo'));
+        this.exigir('GERENCIAR_EQUIPAMENTOS'); this.equipamento.cancelarEquipamento(this.obrigatoria(opcoes, 'id'), this.obrigatoria(opcoes, 'motivo'), this.sessaoAtual!.usuarioId || this.sessaoAtual!.usuario);
         this.exibir('SUCESSO', 'Cadastro cancelado; equipamento e histórico preservados.');
       } else if (comando === 'equip' && acao === 'estado') {
-        this.exigir('GERENCIAR_EQUIPAMENTOS'); this.equipamento.atualizarEstadoFisico(this.obrigatoria(opcoes, 'id'), this.enumObrigatorio(EstadoFisico, opcoes.estado, 'estado'), opcoes.justificativa ?? ''); this.exibir('SUCESSO', 'Estado físico atualizado.');
+        this.exigir('GERENCIAR_EQUIPAMENTOS'); this.equipamento.atualizarEstadoFisico(this.obrigatoria(opcoes, 'id'), this.enumObrigatorio(EstadoFisico, opcoes.estado, 'estado'), opcoes.justificativa ?? '', this.sessaoAtual!.usuarioId || this.sessaoAtual!.usuario); this.exibir('SUCESSO', 'Estado físico atualizado e registrado no histórico.');
       } else if (comando === 'rastrear') {
         this.exigir('CONSULTAR_HISTORICOS'); this.exibir('INFO', JSON.stringify(this.equipamento.rastrearEquipamento(acao), null, 2));
       } else if (comando === 'relatorio' && acao === 'status') {
@@ -156,9 +162,9 @@ export class CLIInterface {
 
   exibirMenuPorPapel(papel: PapelUsuario): void {
     const menus: Record<PapelUsuario, string[]> = {
-      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar/listar/consultar/atualizar/desativar', 'contrato criar/listar/atualizar/cancelar/renovar/encerrar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar/listar/consultar/atualizar/status/cancelar/mover/estado', 'rastrear', 'relatorio status/organizacao/financeiro'],
+      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar/listar/consultar/atualizar/desativar', 'contrato criar/listar/atualizar/cancelar/renovar/encerrar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar/listar/consultar/atualizar/status/cancelar/mover/corrigir-movimentacao/estornar-movimentacao/estado', 'rastrear', 'relatorio status/organizacao/financeiro'],
       OPERADOR_CADASTRO: ['senha alterar', 'org criar/listar/consultar/atualizar/desativar', 'contrato criar/listar/atualizar/cancelar/renovar/encerrar'],
-      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar/listar/consultar/atualizar/status/cancelar/mover/estado'],
+      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar/listar/consultar/atualizar/status/cancelar/mover/corrigir-movimentacao/estornar-movimentacao/estado'],
       AUDITOR: ['rastrear', 'relatorio status/organizacao/financeiro'],
     };
     this.exibir('INFO', `Opções: ${menus[papel].join(' | ')}`);
@@ -178,9 +184,9 @@ export class CLIInterface {
   private comandosDisponiveis(): string[] {
     if (!this.sessaoAtual) return this.comandosPublicos;
     const porPapel: Record<PapelUsuario, string[]> = {
-      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar', 'org listar', 'org consultar', 'org atualizar', 'org desativar', 'contrato criar', 'contrato listar', 'contrato atualizar', 'contrato cancelar', 'org renovar-contrato', 'org encerrar-contrato', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip listar', 'equip consultar', 'equip atualizar', 'equip status', 'equip cancelar', 'equip mover', 'equip estado', 'rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
+      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar', 'org listar', 'org consultar', 'org atualizar', 'org desativar', 'contrato criar', 'contrato listar', 'contrato atualizar', 'contrato cancelar', 'org renovar-contrato', 'org encerrar-contrato', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip listar', 'equip consultar', 'equip atualizar', 'equip status', 'equip cancelar', 'equip mover', 'equip corrigir-movimentacao', 'equip estornar-movimentacao', 'equip estado', 'rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
       OPERADOR_CADASTRO: ['senha alterar', 'org criar', 'org listar', 'org consultar', 'org atualizar', 'org desativar', 'contrato criar', 'contrato listar', 'contrato atualizar', 'contrato cancelar', 'org renovar-contrato', 'org encerrar-contrato'],
-      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip listar', 'equip consultar', 'equip atualizar', 'equip status', 'equip cancelar', 'equip mover', 'equip estado'],
+      GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip listar', 'equip consultar', 'equip atualizar', 'equip status', 'equip cancelar', 'equip mover', 'equip corrigir-movimentacao', 'equip estornar-movimentacao', 'equip estado'],
       AUDITOR: ['rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
     };
     return [...this.comandosPublicos, ...porPapel[this.sessaoAtual.papel]];
@@ -192,7 +198,7 @@ export class CLIInterface {
       'org criar --id ID --razao "RAZÃO" --cnpj CNPJ [--ie IE --endereco "ENDEREÇO" --telefone TEL --email EMAIL]', 'org listar [--todas true]', 'org consultar --id ORG', 'org atualizar --id ORG --razao "RAZÃO" --cnpj CNPJ [--ie IE --endereco "ENDEREÇO" --telefone TEL --email EMAIL]', 'org desativar --id ORG --motivo "MOTIVO"', 'org renovar-contrato --id ORG --vencimento AAAA-MM-DD', 'org encerrar-contrato --id ORG',
       'contrato criar --org ORG --id CONTRATO --assinatura AAAA-MM-DD --vencimento AAAA-MM-DD --valor VALOR [--clausulas "A|B" --renovacao true]', 'contrato listar --org ORG', 'contrato atualizar --org ORG --id CONTRATO [--valor VALOR --clausulas "A|B" --renovacao true|false]', 'contrato cancelar --org ORG --id CONTRATO',
       'lote criar --id ID --org ORG --nf NF --transp TRANSPORTADORA [--data AAAA-MM-DD --obs "TEXTO"]', 'lote listar [--org ORG --inicio AAAA-MM-DD --fim AAAA-MM-DD --status STATUS --todos true]', 'lote consultar --id LOTE', 'lote atualizar --id LOTE [--data AAAA-MM-DD --nf NF --transp TRANSPORTADORA --obs "TEXTO"]', 'lote triagem --id LOTE', 'lote cancelar --id LOTE --motivo "MOTIVO"',
-      'equip criar --id ID --lote LOTE --tipo TIPO --marca MARCA --modelo MODELO --ano ANO --estado ESTADO --peso KG', 'equip listar [--lote LOTE --status STATUS --todos true]', 'equip consultar --id ID | --codigo BARRAS', 'equip atualizar --id ID [--marca MARCA --modelo MODELO --ano ANO --peso KG]', 'equip status --id ID --status STATUS', 'equip mover --id EQUIPAMENTO --destino DESTINO', 'equip estado --id EQUIPAMENTO --estado ESTADO [--justificativa "TEXTO"]', 'equip cancelar --id EQUIPAMENTO --motivo "MOTIVO"',
+      'equip criar --id ID --lote LOTE --tipo TIPO --marca MARCA --modelo MODELO --ano ANO --estado ESTADO --peso KG', 'equip listar [--lote LOTE --status STATUS --todos true]', 'equip consultar --id ID | --codigo BARRAS', 'equip atualizar --id ID [--marca MARCA --modelo MODELO --ano ANO --peso KG]', 'equip status --id ID --status STATUS', 'equip mover --id EQUIPAMENTO --destino DESTINO', 'equip corrigir-movimentacao --id EQ --mov ID_MOV --destino NOVO --justificativa TEXTO', 'equip estornar-movimentacao --id EQ --mov ID_MOV --justificativa TEXTO', 'equip estado --id EQUIPAMENTO --estado ESTADO [--justificativa "TEXTO"]', 'equip cancelar --id EQUIPAMENTO --motivo "MOTIVO"',
       'rastrear EQUIPAMENTO', 'relatorio status --status STATUS | relatorio organizacao --org ORG --inicio AAAA-MM-DD --fim AAAA-MM-DD | relatorio financeiro --inicio AAAA-MM-DD --fim AAAA-MM-DD',
       `Papéis: ${Object.values(PapelUsuario).join(', ')}`, `Estados: ${Object.values(EstadoFisico).join(', ')}`,
     ].join('\n'));

@@ -2,6 +2,7 @@ import { Movimentacao } from './Movimentacao.js';
 import { EstadoFisico } from '../types/EstadoFisico.js';
 import { StatusRastreamento } from '../types/StatusRastreamento.js';
 import { TipoEquipamento } from '../types/TipoEquipamento.js';
+import { randomUUID } from 'node:crypto';
 
 export class Equipamento {
   constructor(
@@ -19,6 +20,7 @@ export class Equipamento {
     public historicoMovimentacao: Movimentacao[],
     public cancelado = false,
     public motivoCancelamento: string | null = null,
+    public dataCadastro: Date | null = new Date(),
   ) {}
 
   atualizarStatus(novoStatus: StatusRastreamento, justificativa: string): void {
@@ -38,16 +40,19 @@ export class Equipamento {
     if (this.cancelado) throw new Error('O equipamento está cancelado e não aceita novas operações.');
   }
 
-  registrarMovimentacao(destino: string, responsavel: string): void {
+  registrarMovimentacao(destino: string, responsavel: string, tipoEvento: 'MOVIMENTACAO' | 'STATUS' | 'ESTADO_FISICO' | 'CANCELAMENTO' | 'CORRECAO' | 'ESTORNO' = 'MOVIMENTACAO', observacao = `Movimentação registrada para ${this.id}`, movimentacaoReferenciadaId: string | null = null, destinoCorrigido: string | null = null, origemEvento?: string): void {
     this.exigirAtivo();
     const mov = new Movimentacao(
-      `mov-${Date.now()}-${this.historicoMovimentacao.length}`,
+      randomUUID(),
       this.id,
       new Date(),
-      this.statusRastreamento,
+      origemEvento ?? [...this.historicoMovimentacao].reverse().find((evento) => evento.tipoEvento === 'MOVIMENTACAO' || evento.tipoEvento === 'ESTORNO')?.destino ?? 'RECEBIMENTO',
       destino,
       responsavel,
-      `Movimentação registrada para ${this.id}`,
+      observacao,
+      tipoEvento,
+      movimentacaoReferenciadaId,
+      destinoCorrigido,
     );
 
     this.historicoMovimentacao.push(mov);

@@ -82,8 +82,10 @@ As permissões são verificadas tanto no menu quanto antes da execução do serv
 | `equip atualizar --id ID [...]` / `equip cancelar --id ID --motivo MOTIVO` | corrige cadastro antes da triagem ou cancela sem apagar o histórico |
 | `equip status --id ID --status STATUS` | avança pela sequência triagem, desmontagem, destinação e baixa definitiva |
 | `equip mover --id EQ --destino LOCAL` | registra movimentação |
+| `equip corrigir-movimentacao --id EQ --mov ID_MOV --destino LOCAL --justificativa "MOTIVO"` | registra correção sem alterar a movimentação original |
+| `equip estornar-movimentacao --id EQ --mov ID_MOV --justificativa "MOTIVO"` | registra retorno ao local de origem da movimentação física mais recente |
 | `equip estado --id EQ --estado ESTADO --justificativa "TEXTO"` | atualiza estado físico |
-| `rastrear EQ` | mostra equipamento, lote, organização e movimentações |
+| `rastrear EQ` | mostra equipamento, lote, organização e linha do tempo de contratos, movimentações, status, estado físico e destinação |
 | `relatorio status --status STATUS` | gera relatório por status |
 | `relatorio organizacao --org ORG --inicio AAAA-MM-DD --fim AAAA-MM-DD` | gera relatório por organização |
 | `relatorio financeiro --inicio AAAA-MM-DD --fim AAAA-MM-DD` | gera relatório financeiro |

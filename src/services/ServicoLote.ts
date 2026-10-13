@@ -196,9 +196,13 @@ export class ServicoLote {
         movimentacao.destino,
         movimentacao.responsavel,
         movimentacao.observacao,
+        movimentacao.tipoEvento ?? 'MOVIMENTACAO',
+        movimentacao.movimentacaoReferenciadaId ?? null,
+        movimentacao.destinoCorrigido ?? null,
       )),
       dados.cancelado ?? false,
       dados.motivoCancelamento ?? null,
+      dados.dataCadastro ? new Date(dados.dataCadastro) : null,
     );
   }
 }

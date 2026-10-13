@@ -1,4 +1,5 @@
 import { Equipamento } from '../domain/Equipamento.js';
+import { Contrato } from '../domain/Contrato.js';
 import { Lote } from '../domain/Lote.js';
 import { Movimentacao } from '../domain/Movimentacao.js';
 import { Organizacao } from '../domain/Organizacao.js';
@@ -7,12 +8,15 @@ import { EstadoFisico } from '../types/EstadoFisico.js';
 import { StatusLote } from '../types/StatusLote.js';
 import { StatusRastreamento } from '../types/StatusRastreamento.js';
 import { TipoEquipamento } from '../types/TipoEquipamento.js';
+import { randomUUID } from 'node:crypto';
 
 export interface HistoricoCompleto {
   equipamento: Equipamento;
   lote: Lote;
   organizacao: Organizacao;
   movimentacoes: Movimentacao[];
+  localizacaoAtual: string;
+  linhaDoTempo: Array<{ dataHora: Date; tipo: string; descricao: string; responsavel?: string; eventoId?: string }>;
 }
 
 export class ServicoEquipamento {
@@ -39,13 +43,54 @@ export class ServicoEquipamento {
       throw new Error('Organização associada ao lote não encontrada.');
     }
 
-    return {
-      equipamento,
-      lote,
-      organizacao: this.reconstituirOrganizacao(dadosOrganizacao),
-      movimentacoes: [...equipamento.historicoMovimentacao]
-        .sort((primeira, segunda) => primeira.dataHora.getTime() - segunda.dataHora.getTime()),
-    };
+    const organizacao = this.reconstituirOrganizacao(dadosOrganizacao);
+    const movimentacoes = [...equipamento.historicoMovimentacao]
+      .sort((primeira, segunda) => primeira.dataHora.getTime() - segunda.dataHora.getTime() || primeira.id.localeCompare(segunda.id));
+    const linhaDoTempo: HistoricoCompleto['linhaDoTempo'] = [
+      { dataHora: organizacao.dataCadastro, tipo: 'ORGANIZACAO', descricao: `Organização ${organizacao.razaoSocial} cadastrada`, eventoId: organizacao.id },
+      ...organizacao.contratos.flatMap((contrato) => [
+        { dataHora: contrato.dataAssinatura, tipo: 'CONTRATO', descricao: `Contrato ${contrato.id} assinado`, eventoId: contrato.id },
+        ...contrato.historicoRenovacoes.map((renovacao) => ({ dataHora: renovacao.registradoEm, tipo: 'RENOVACAO_CONTRATO', descricao: `Contrato ${contrato.id} renovado até ${renovacao.dataVencimentoNovo.toISOString()}`, eventoId: contrato.id })),
+        ...(contrato.encerradoEm ? [{ dataHora: contrato.encerradoEm, tipo: 'ENCERRAMENTO_CONTRATO', descricao: `Contrato ${contrato.id} encerrado`, eventoId: contrato.id }] : []),
+      ]),
+      { dataHora: lote.dataEntrada, tipo: 'LOTE', descricao: `Lote ${lote.id} recebido pela organização ${organizacao.id}`, eventoId: lote.id },
+      ...(equipamento.dataCadastro ? [{ dataHora: equipamento.dataCadastro, tipo: 'EQUIPAMENTO', descricao: `Equipamento ${equipamento.id} cadastrado no lote ${lote.id}`, eventoId: equipamento.id }] : []),
+      ...movimentacoes.map((evento) => ({
+        dataHora: evento.dataHora,
+        tipo: evento.tipoEvento,
+        descricao: this.descreverEvento(evento),
+        responsavel: evento.responsavel,
+        eventoId: evento.id,
+      })),
+    ].sort((primeiro, segundo) => primeiro.dataHora.getTime() - segundo.dataHora.getTime() || (primeiro.eventoId ?? '').localeCompare(segundo.eventoId ?? ''));
+    return { equipamento, lote, organizacao, movimentacoes, localizacaoAtual: this.obterLocalAtual(movimentacoes), linhaDoTempo };
+  }
+
+  corrigirMovimentacao(identificador: string, movimentacaoId: string, novoDestino: string, responsavel: string, justificativa: string): void {
+    const equipamento = this.consultarEquipamento(identificador);
+    const original = equipamento.historicoMovimentacao.find((item) => item.id === movimentacaoId);
+    if (!original || original.tipoEvento !== 'MOVIMENTACAO') throw new Error('Movimentação original não encontrada.');
+    if (equipamento.historicoMovimentacao.some((item) => item.movimentacaoReferenciadaId === movimentacaoId)) throw new Error('Esta movimentação já possui evento de correção ou estorno.');
+    if (!novoDestino.trim() || !justificativa.trim()) throw new Error('Informe o novo destino e a justificativa da correção.');
+    const localAtual = this.obterLocalAtual(equipamento.historicoMovimentacao);
+    equipamento.historicoMovimentacao.push(new Movimentacao(randomUUID(), equipamento.id, new Date(), localAtual, localAtual, responsavel, justificativa.trim(), 'CORRECAO', movimentacaoId, novoDestino.trim()));
+    this.repositorio.salvarEntidade('equipamentos', equipamento);
+    this.atualizarEquipamentoNoLote(equipamento);
+  }
+
+  estornarMovimentacao(identificador: string, movimentacaoId: string, responsavel: string, justificativa: string): void {
+    const equipamento = this.consultarEquipamento(identificador);
+    const eventos = equipamento.historicoMovimentacao;
+    const indiceOriginal = eventos.findIndex((item) => item.id === movimentacaoId && item.tipoEvento === 'MOVIMENTACAO');
+    if (indiceOriginal < 0) throw new Error('Movimentação original não encontrada.');
+    if (eventos.some((item) => item.movimentacaoReferenciadaId === movimentacaoId)) throw new Error('Esta movimentação já possui evento de correção ou estorno.');
+    if (!justificativa.trim()) throw new Error('Informe a justificativa do estorno.');
+    const houveMovimentacaoPosterior = eventos.slice(indiceOriginal + 1).some((item) => item.tipoEvento === 'MOVIMENTACAO' || item.tipoEvento === 'ESTORNO');
+    if (houveMovimentacaoPosterior) throw new Error('Só é possível estornar a movimentação física mais recente; use correção para registrar ajuste histórico.');
+    const original = eventos[indiceOriginal]!;
+    equipamento.historicoMovimentacao.push(new Movimentacao(randomUUID(), equipamento.id, new Date(), original.destino, original.origem, responsavel, justificativa.trim(), 'ESTORNO', movimentacaoId));
+    this.repositorio.salvarEntidade('equipamentos', equipamento);
+    this.atualizarEquipamentoNoLote(equipamento);
   }
 
   consultarEquipamento(identificador: string): Equipamento {
@@ -96,13 +141,13 @@ export class ServicoEquipamento {
         ? destinosFinais.includes(novoStatus)
         : destinosFinais.includes(equipamento.statusRastreamento) && novoStatus === StatusRastreamento.BAIXA_DEFINITIVA;
     if (!permitido) throw new Error('Transição de status inválida. Siga a sequência triagem, desmontagem, destinação e baixa definitiva.');
-    equipamento.registrarMovimentacao(novoStatus, responsavel);
+    equipamento.registrarMovimentacao(novoStatus, responsavel, 'STATUS', `Mudança de status: ${equipamento.statusRastreamento} -> ${novoStatus}`, null, null, equipamento.statusRastreamento);
     equipamento.atualizarStatus(novoStatus, 'Alteração de status registrada no histórico.');
     this.repositorio.salvarEntidade('equipamentos', equipamento);
     this.atualizarEquipamentoNoLote(equipamento);
   }
 
-  atualizarEstadoFisico(id: string, novoEstado: EstadoFisico, justificativa = ''): void {
+  atualizarEstadoFisico(id: string, novoEstado: EstadoFisico, justificativa = '', responsavel = 'sistema'): void {
     const dados = this.localizarDadosEquipamento(id);
 
     if (!dados) {
@@ -133,7 +178,9 @@ export class ServicoEquipamento {
       throw new Error('Justificativa obrigatória para degradar o estado físico em duas ou mais categorias.');
     }
 
+    const estadoAnterior = equipamento.estadoFisico;
     equipamento.estadoFisico = novoEstado;
+    equipamento.historicoMovimentacao.push(new Movimentacao(randomUUID(), equipamento.id, new Date(), estadoAnterior, novoEstado, responsavel, justificativa.trim(), 'ESTADO_FISICO'));
     this.repositorio.salvarEntidade('equipamentos', equipamento);
     this.atualizarEquipamentoNoLote(equipamento);
   }
@@ -148,15 +195,16 @@ export class ServicoEquipamento {
     const equipamento = this.reconstituirEquipamento(dados);
     equipamento.exigirAtivo();
     this.exigirLoteAtivo(equipamento);
-    equipamento.registrarMovimentacao(destino, responsavel);
+    equipamento.registrarMovimentacao(destino, responsavel, 'MOVIMENTACAO', `Movimentação registrada para ${equipamento.id}`, null, null, this.obterLocalAtual(equipamento.historicoMovimentacao) || 'RECEBIMENTO');
     this.repositorio.salvarEntidade('equipamentos', equipamento);
     this.atualizarEquipamentoNoLote(equipamento);
   }
 
-  cancelarEquipamento(id: string, motivo: string): void {
+  cancelarEquipamento(id: string, motivo: string, responsavel = 'sistema'): void {
     const dados = this.localizarDadosEquipamento(id);
     const equipamento = this.reconstituirEquipamento(dados);
     this.exigirLoteAtivo(equipamento);
+    equipamento.registrarMovimentacao(equipamento.statusRastreamento, responsavel, 'CANCELAMENTO', `Cadastro cancelado. Motivo: ${motivo.trim()}`, null, null, equipamento.statusRastreamento);
     equipamento.cancelar(motivo);
     this.repositorio.salvarEntidade('equipamentos', equipamento);
     this.atualizarEquipamentoNoLote(equipamento);
@@ -233,9 +281,13 @@ export class ServicoEquipamento {
         movimentacao.destino,
         movimentacao.responsavel,
         movimentacao.observacao,
+        movimentacao.tipoEvento ?? 'MOVIMENTACAO',
+        movimentacao.movimentacaoReferenciadaId ?? null,
+        movimentacao.destinoCorrigido ?? null,
       )),
       dados.cancelado ?? false,
       dados.motivoCancelamento ?? null,
+      dados.dataCadastro ? new Date(dados.dataCadastro) : null,
     );
   }
 
@@ -265,8 +317,32 @@ export class ServicoEquipamento {
       dados.email,
       new Date(dados.dataCadastro),
       dados.ativo,
-      null,
+      this.reconstituirContrato(dados.contratoVigente),
       dados.motivoDesativacao ?? null,
+      (dados.contratos ?? (dados.contratoVigente ? [dados.contratoVigente] : [])).map((contrato: any) => this.reconstituirContrato(contrato)!),
     );
+  }
+
+  private reconstituirContrato(dados: any): Contrato | null {
+    if (!dados) return null;
+    return new Contrato(dados.id, dados.organizacaoId, new Date(dados.dataAssinatura), new Date(dados.dataVencimento), dados.clausulas ?? [], dados.valorMensal, dados.renovacaoAutomatica, dados.encerradoEm ? new Date(dados.encerradoEm) : null, (dados.historicoRenovacoes ?? []).map((item: any) => ({ dataVencimentoAnterior: new Date(item.dataVencimentoAnterior), dataVencimentoNovo: new Date(item.dataVencimentoNovo), registradoEm: new Date(item.registradoEm) })));
+  }
+
+  private obterLocalAtual(eventos: Movimentacao[]): string {
+    const ultimaMovimentacaoFisica = [...eventos]
+      .filter((evento) => evento.tipoEvento === 'MOVIMENTACAO' || evento.tipoEvento === 'ESTORNO')
+      .sort((primeira, segunda) => primeira.dataHora.getTime() - segunda.dataHora.getTime())
+      .at(-1);
+    if (!ultimaMovimentacaoFisica) return '';
+    return eventos.find((evento) => evento.tipoEvento === 'CORRECAO' && evento.movimentacaoReferenciadaId === ultimaMovimentacaoFisica.id)?.destinoCorrigido ?? ultimaMovimentacaoFisica.destino;
+  }
+
+  private descreverEvento(evento: Movimentacao): string {
+    if (evento.tipoEvento === 'CORRECAO') return `Correção da movimentação ${evento.movimentacaoReferenciadaId}: destino correto ${evento.destinoCorrigido}. ${evento.observacao}`;
+    if (evento.tipoEvento === 'ESTORNO') return `Estorno da movimentação ${evento.movimentacaoReferenciadaId}: ${evento.origem} -> ${evento.destino}. ${evento.observacao}`;
+    if (evento.tipoEvento === 'STATUS') return `${evento.observacao} (${evento.origem} -> ${evento.destino})`;
+    if (evento.tipoEvento === 'ESTADO_FISICO') return evento.observacao;
+    if (evento.tipoEvento === 'CANCELAMENTO') return evento.observacao;
+    return `${evento.origem} -> ${evento.destino}. ${evento.observacao}`;
   }
 }
