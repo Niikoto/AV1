@@ -43,6 +43,8 @@ Ao desativar uma conta, o sistema revoga as sessões e limpa login, nome de exib
 | `GESTOR_ALMOXARIFADO` | lotes, triagem, equipamentos e movimentações |
 | `AUDITOR` | rastreabilidade e relatórios |
 
+Parâmetros globais são acessíveis somente ao `ADMINISTRADOR`. Cada alteração cria um novo registro cifrado e journalizado, mantendo versões anteriores. Alíquotas são identificadas pelo administrador (por exemplo, `ICMS`) e informadas como fração entre 0 e 1; o coeficiente de depreciação segue o mesmo intervalo. O valor inicial do coeficiente é 0,08 e a lista de alíquotas começa vazia, pois o enunciado não fixa tributos ou percentuais.
+
 ## Journal e retenção
 
 `JournalTransacao` também é persistido pelo repositório e, portanto, cifrado. Toda gravação ou exclusão de entidade segue esta sequência:

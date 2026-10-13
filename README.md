@@ -65,6 +65,8 @@ As permissões são verificadas tanto no menu quanto antes da execução do serv
 | `usuario nome --usuario U --novo NOME` / `usuario papel --usuario U --papel PAPEL` | atualiza nome de exibição ou papel (administrador) |
 | `usuario senha --usuario U --nova SENHA` / `usuario desativar --usuario U` | redefine senha ou desativa conta (administrador) |
 | `senha alterar --atual S --nova N` | altera a senha do usuário autenticado |
+| `parametros consultar` / `parametros historico` | consulta parâmetros atuais ou suas versões anteriores (administrador) |
+| `parametros atualizar [--imposto ICMS --aliquota 0.18] [--coeficiente-depreciacao 0.08]` | cria nova versão dos parâmetros; taxas usam fração entre 0 e 1 |
 | `org criar ...` | cadastra uma organização |
 | `org listar [--todas true]` / `org consultar --id ORG` | consulta organizações ativas ou inclui desativadas na listagem |
 | `org atualizar --id ORG --razao RAZAO --cnpj CNPJ [...]` / `org desativar --id ORG --motivo MOTIVO` | atualiza dados cadastrais ou desativa sem apagar vínculos históricos |

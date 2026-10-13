@@ -97,6 +97,10 @@ export class ServicoEquipamento {
     return this.reconstituirEquipamento(this.localizarDadosEquipamento(identificador));
   }
 
+  calcularDepreciacao(identificador: string, coeficienteDepreciacao = 0.08): number {
+    return this.consultarEquipamento(identificador).calcularDepreciacao(coeficienteDepreciacao);
+  }
+
   listarEquipamentos(filtros: { loteId?: string; status?: StatusRastreamento; incluirCancelados?: boolean } = {}): Equipamento[] {
     return this.repositorio.listarEntidades('equipamentos')
       .map((dados) => this.reconstituirEquipamento(dados))

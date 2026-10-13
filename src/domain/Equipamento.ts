@@ -58,10 +58,12 @@ export class Equipamento {
     this.historicoMovimentacao.push(mov);
   }
 
-  calcularDepreciacao(): number {
-    const coeficientePadrao = 0.08;
+  calcularDepreciacao(coeficienteDepreciacao = 0.08): number {
+    if (!Number.isFinite(coeficienteDepreciacao) || coeficienteDepreciacao < 0 || coeficienteDepreciacao > 1) {
+      throw new Error('O coeficiente de depreciação deve estar entre 0 e 1.');
+    }
     const anos = Math.max(0, new Date().getFullYear() - this.anoFabricacao);
-    const valor = this.pesoQuilogramas * anos * coeficientePadrao;
+    const valor = this.pesoQuilogramas * anos * coeficienteDepreciacao;
 
     return Number(valor.toFixed(2));
   }

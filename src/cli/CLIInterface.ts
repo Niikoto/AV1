@@ -8,6 +8,7 @@ import { ServicoEquipamento } from '../services/ServicoEquipamento.js';
 import { ServicoLote } from '../services/ServicoLote.js';
 import { ServicoOrganizacao } from '../services/ServicoOrganizacao.js';
 import { ServicoRelatorio } from '../services/ServicoRelatorio.js';
+import { ServicoParametrosGlobais } from '../services/ServicoParametrosGlobais.js';
 import { Sessao } from '../session/Sessao.js';
 import { EstadoFisico } from '../types/EstadoFisico.js';
 import { PapelUsuario } from '../types/PapelUsuario.js';
@@ -23,7 +24,7 @@ export class CLIInterface {
   private readonly caminhoHistorico = join('data', 'historico-comandos.txt');
   private readonly comandosPublicos = ['ajuda', 'login', 'logout', 'menu', 'sair'];
 
-  constructor(private autenticacao: ServicoAutenticacao, private organizacao: ServicoOrganizacao, private lote: ServicoLote, private equipamento: ServicoEquipamento, private relatorio: ServicoRelatorio) {}
+  constructor(private autenticacao: ServicoAutenticacao, private organizacao: ServicoOrganizacao, private lote: ServicoLote, private equipamento: ServicoEquipamento, private relatorio: ServicoRelatorio, private parametrosGlobais?: ServicoParametrosGlobais) {}
 
   iniciarLoop(): void { void this.executarLoop(); }
 
@@ -67,6 +68,14 @@ export class CLIInterface {
         if (!alterada) throw new Error('Senha atual inválida ou nova senha ausente.');
         this.sessaoAtual = null;
         this.exibir('SUCESSO', 'Senha alterada. Entre novamente com a nova senha.');
+      } else if (comando === 'parametros' && acao === 'consultar') {
+        this.exigir('GERENCIAR_PARAMETROS_GLOBAIS'); this.exibir('INFO', JSON.stringify(this.exigirServicoParametros().consultar(this.sessaoAtual!.token), null, 2));
+      } else if (comando === 'parametros' && acao === 'historico') {
+        this.exigir('GERENCIAR_PARAMETROS_GLOBAIS'); this.exibir('INFO', JSON.stringify(this.exigirServicoParametros().listarHistorico(this.sessaoAtual!.token), null, 2));
+      } else if (comando === 'parametros' && acao === 'atualizar') {
+        this.exigir('GERENCIAR_PARAMETROS_GLOBAIS');
+        this.exigirServicoParametros().atualizar(this.sessaoAtual!.token, { imposto: opcoes.imposto, aliquota: opcoes.aliquota === undefined ? undefined : this.numeroObrigatorio(opcoes, 'aliquota'), coeficienteDepreciacao: opcoes['coeficiente-depreciacao'] === undefined ? undefined : this.numeroObrigatorio(opcoes, 'coeficiente-depreciacao') }, this.sessaoAtual!.usuarioId || this.sessaoAtual!.usuario);
+        this.exibir('SUCESSO', 'Nova versão dos parâmetros globais registrada no histórico.');
       } else if (comando === 'org' && acao === 'criar') {
         this.exigir('GERENCIAR_ORGANIZACOES');
         this.organizacao.cadastrarOrganizacao({ id: this.obrigatoria(opcoes, 'id'), razaoSocial: this.obrigatoria(opcoes, 'razao'), cnpj: this.obrigatoria(opcoes, 'cnpj'), inscricaoEstadual: opcoes.ie ?? '', enderecoCompleto: opcoes.endereco ?? '', telefone: opcoes.telefone ?? '', email: opcoes.email ?? '', contratoVigente: null });
@@ -162,7 +171,7 @@ export class CLIInterface {
 
   exibirMenuPorPapel(papel: PapelUsuario): void {
     const menus: Record<PapelUsuario, string[]> = {
-      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar/listar/consultar/atualizar/desativar', 'contrato criar/listar/atualizar/cancelar/renovar/encerrar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar/listar/consultar/atualizar/status/cancelar/mover/corrigir-movimentacao/estornar-movimentacao/estado', 'rastrear', 'relatorio status/organizacao/financeiro'],
+      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'parametros consultar/historico/atualizar', 'org criar/listar/consultar/atualizar/desativar', 'contrato criar/listar/atualizar/cancelar/renovar/encerrar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar/listar/consultar/atualizar/status/cancelar/mover/corrigir-movimentacao/estornar-movimentacao/estado', 'rastrear', 'relatorio status/organizacao/financeiro'],
       OPERADOR_CADASTRO: ['senha alterar', 'org criar/listar/consultar/atualizar/desativar', 'contrato criar/listar/atualizar/cancelar/renovar/encerrar'],
       GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar/listar/consultar/atualizar/status/cancelar/mover/corrigir-movimentacao/estornar-movimentacao/estado'],
       AUDITOR: ['rastrear', 'relatorio status/organizacao/financeiro'],
@@ -184,7 +193,7 @@ export class CLIInterface {
   private comandosDisponiveis(): string[] {
     if (!this.sessaoAtual) return this.comandosPublicos;
     const porPapel: Record<PapelUsuario, string[]> = {
-      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'org criar', 'org listar', 'org consultar', 'org atualizar', 'org desativar', 'contrato criar', 'contrato listar', 'contrato atualizar', 'contrato cancelar', 'org renovar-contrato', 'org encerrar-contrato', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip listar', 'equip consultar', 'equip atualizar', 'equip status', 'equip cancelar', 'equip mover', 'equip corrigir-movimentacao', 'equip estornar-movimentacao', 'equip estado', 'rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
+      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'parametros consultar', 'parametros historico', 'parametros atualizar', 'org criar', 'org listar', 'org consultar', 'org atualizar', 'org desativar', 'contrato criar', 'contrato listar', 'contrato atualizar', 'contrato cancelar', 'org renovar-contrato', 'org encerrar-contrato', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip listar', 'equip consultar', 'equip atualizar', 'equip status', 'equip cancelar', 'equip mover', 'equip corrigir-movimentacao', 'equip estornar-movimentacao', 'equip estado', 'rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
       OPERADOR_CADASTRO: ['senha alterar', 'org criar', 'org listar', 'org consultar', 'org atualizar', 'org desativar', 'contrato criar', 'contrato listar', 'contrato atualizar', 'contrato cancelar', 'org renovar-contrato', 'org encerrar-contrato'],
       GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip listar', 'equip consultar', 'equip atualizar', 'equip status', 'equip cancelar', 'equip mover', 'equip corrigir-movimentacao', 'equip estornar-movimentacao', 'equip estado'],
       AUDITOR: ['rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
@@ -195,6 +204,7 @@ export class CLIInterface {
   private exibirAjuda(): void {
     this.exibir('INFO', [
       'login USUARIO --senha SENHA', 'usuario criar --usuario LOGIN --nome "NOME" --senha SENHA --papel PAPEL', 'usuario listar', 'usuario consultar --usuario LOGIN | --id ID', 'usuario nome --usuario LOGIN --novo "NOME"', 'usuario papel --usuario LOGIN --papel PAPEL', 'usuario senha --usuario LOGIN --nova SENHA', 'usuario desativar --usuario LOGIN', 'senha alterar --atual SENHA --nova SENHA',
+      'parametros consultar', 'parametros historico', 'parametros atualizar [--imposto ICMS --aliquota 0.18] [--coeficiente-depreciacao 0.08]',
       'org criar --id ID --razao "RAZÃO" --cnpj CNPJ [--ie IE --endereco "ENDEREÇO" --telefone TEL --email EMAIL]', 'org listar [--todas true]', 'org consultar --id ORG', 'org atualizar --id ORG --razao "RAZÃO" --cnpj CNPJ [--ie IE --endereco "ENDEREÇO" --telefone TEL --email EMAIL]', 'org desativar --id ORG --motivo "MOTIVO"', 'org renovar-contrato --id ORG --vencimento AAAA-MM-DD', 'org encerrar-contrato --id ORG',
       'contrato criar --org ORG --id CONTRATO --assinatura AAAA-MM-DD --vencimento AAAA-MM-DD --valor VALOR [--clausulas "A|B" --renovacao true]', 'contrato listar --org ORG', 'contrato atualizar --org ORG --id CONTRATO [--valor VALOR --clausulas "A|B" --renovacao true|false]', 'contrato cancelar --org ORG --id CONTRATO',
       'lote criar --id ID --org ORG --nf NF --transp TRANSPORTADORA [--data AAAA-MM-DD --obs "TEXTO"]', 'lote listar [--org ORG --inicio AAAA-MM-DD --fim AAAA-MM-DD --status STATUS --todos true]', 'lote consultar --id LOTE', 'lote atualizar --id LOTE [--data AAAA-MM-DD --nf NF --transp TRANSPORTADORA --obs "TEXTO"]', 'lote triagem --id LOTE', 'lote cancelar --id LOTE --motivo "MOTIVO"',
@@ -205,6 +215,7 @@ export class CLIInterface {
   }
 
   private exigir(acao: AcaoProtegida): void { this.exigirSessao(); if (!this.autenticacao.possuiPermissao(this.sessaoAtual!.token, acao)) throw new Error('Sessão inválida ou usuário sem permissão para esta operação.'); }
+  private exigirServicoParametros(): ServicoParametrosGlobais { if (!this.parametrosGlobais) throw new Error('Serviço de parâmetros globais indisponível.'); return this.parametrosGlobais; }
   private exigirSessao(): void { if (!this.sessaoAtual || !this.autenticacao.validarToken(this.sessaoAtual.token)) { this.sessaoAtual = null; throw new Error('Faça login novamente.'); } }
   private obrigatoria(opcoes: Record<string, string>, nome: string): string { const valor = opcoes[nome]?.trim(); if (!valor) throw new Error(`O argumento --${nome} é obrigatório.`); return valor; }
   private numeroObrigatorio(opcoes: Record<string, string>, nome: string): number { const valor = Number(this.obrigatoria(opcoes, nome)); if (!Number.isFinite(valor)) throw new Error(`O argumento --${nome} deve ser numérico.`); return valor; }

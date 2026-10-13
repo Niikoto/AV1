@@ -13,6 +13,7 @@ import { ServicoEquipamento } from './services/ServicoEquipamento.js';
 import { ServicoLote } from './services/ServicoLote.js';
 import { ServicoOrganizacao } from './services/ServicoOrganizacao.js';
 import { ServicoRelatorio } from './services/ServicoRelatorio.js';
+import { ServicoParametrosGlobais } from './services/ServicoParametrosGlobais.js';
 import { PapelUsuario } from './types/PapelUsuario.js';
 import { ValidadorCNPJ } from './validators/ValidadorCNPJ.js';
 import { ValidadorDataEntrada } from './validators/ValidadorDataEntrada.js';
@@ -50,4 +51,5 @@ new CLIInterface(
   new ServicoLote(repositorio, new ValidadorDataEntrada()),
   new ServicoEquipamento(repositorio),
   new ServicoRelatorio(repositorio),
+  new ServicoParametrosGlobais(repositorio, autenticacao),
 ).iniciarLoop();
