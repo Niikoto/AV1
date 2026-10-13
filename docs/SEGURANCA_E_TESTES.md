@@ -26,7 +26,7 @@ Limitações:
 
 - Se a senha do administrador for perdida, esta implementação não recupera a chave mestra nem os dados.
 - O arquivo mestre precisa de proteção do sistema operacional e de backup contra exclusão ou substituição.
-- O histórico da CLI não é cifrado. A CLI não grava no histórico comandos que contêm senha, mas o arquivo ainda diverge da exigência de cifrar todos os dados persistidos. Essa correção depende de integrá-lo ao repositório cifrado.
+- O histórico da CLI é salvo no repositório cifrado e comandos com campos de senha são descartados. Na próxima inicialização, o arquivo legado `historico-comandos.txt` é migrado e removido somente depois que a gravação cifrada termina com sucesso.
 
 ### Sessões e permissões
 
@@ -90,9 +90,7 @@ O comando compila o TypeScript e executa `tests/av1.test.mjs` pelo executor nati
 
 ## Pendências identificadas pelos testes
 
-Um teste permanece como `TODO`, pois expõe uma lacuna ainda não implementada:
-
-1. **Desmonte sem triagem:** `ServicoEquipamento` ainda não possui uma operação de transição para `EM_DESMONTE` que aplique essa regra de negócio.
+Um teste permanece como `TODO` para a regra de bloquear `EM_DESMONTE` antes da triagem. A regra já foi implementada no serviço; o passo 10 deve substituir o TODO por um teste de regressão.
 
 ## Comandos principais
 

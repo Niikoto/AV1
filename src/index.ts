@@ -52,4 +52,5 @@ new CLIInterface(
   new ServicoEquipamento(repositorio),
   new ServicoRelatorio(repositorio),
   new ServicoParametrosGlobais(repositorio, autenticacao),
+  repositorio,
 ).iniciarLoop();

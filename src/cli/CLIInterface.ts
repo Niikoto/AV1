@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface, Interface } from 'node:readline';
 
@@ -9,6 +9,7 @@ import { ServicoLote } from '../services/ServicoLote.js';
 import { ServicoOrganizacao } from '../services/ServicoOrganizacao.js';
 import { ServicoRelatorio } from '../services/ServicoRelatorio.js';
 import { ServicoParametrosGlobais } from '../services/ServicoParametrosGlobais.js';
+import { RepositorioArquivo } from '../infra/RepositorioArquivo.js';
 import { Sessao } from '../session/Sessao.js';
 import { EstadoFisico } from '../types/EstadoFisico.js';
 import { PapelUsuario } from '../types/PapelUsuario.js';
@@ -21,10 +22,10 @@ type NivelMensagem = 'SUCESSO' | 'ERRO' | 'INFO';
 export class CLIInterface {
   public sessaoAtual: Sessao | null = null;
   private interface: Interface | null = null;
-  private readonly caminhoHistorico = join('data', 'historico-comandos.txt');
+  private readonly caminhoHistoricoLegado = join('data', 'historico-comandos.txt');
   private readonly comandosPublicos = ['ajuda', 'login', 'logout', 'menu', 'sair'];
 
-  constructor(private autenticacao: ServicoAutenticacao, private organizacao: ServicoOrganizacao, private lote: ServicoLote, private equipamento: ServicoEquipamento, private relatorio: ServicoRelatorio, private parametrosGlobais?: ServicoParametrosGlobais) {}
+  constructor(private autenticacao: ServicoAutenticacao, private organizacao: ServicoOrganizacao, private lote: ServicoLote, private equipamento: ServicoEquipamento, private relatorio: ServicoRelatorio, private parametrosGlobais?: ServicoParametrosGlobais, private repositorio?: RepositorioArquivo) {}
 
   iniciarLoop(): void { void this.executarLoop(); }
 
@@ -160,9 +161,11 @@ export class CLIInterface {
       } else if (comando === 'relatorio' && acao === 'status') {
         this.exigir('GERAR_RELATORIOS'); this.exibir('INFO', this.relatorio.gerarRelatorioPorStatus(this.enumObrigatorio(StatusRastreamento, opcoes.status, 'status')));
       } else if (comando === 'relatorio' && acao === 'organizacao') {
-        this.exigir('GERAR_RELATORIOS'); this.exibir('INFO', this.relatorio.gerarRelatorioPorOrganizacao(this.obrigatoria(opcoes, 'org'), { inicio: this.dataObrigatoria(opcoes, 'inicio'), fim: this.dataObrigatoria(opcoes, 'fim') }));
+        this.exigir('GERAR_RELATORIOS'); this.exibir('INFO', this.relatorio.gerarRelatorioPorOrganizacao(this.obrigatoria(opcoes, 'org'), this.periodoObrigatorio(opcoes)));
       } else if (comando === 'relatorio' && acao === 'financeiro') {
-        this.exigir('GERAR_RELATORIOS'); this.exibir('INFO', this.relatorio.gerarRelatorioFinanceiro({ inicio: this.dataObrigatoria(opcoes, 'inicio'), fim: this.dataObrigatoria(opcoes, 'fim') }));
+        this.exigir('GERAR_RELATORIOS'); this.exibir('INFO', this.relatorio.gerarRelatorioFinanceiro(this.periodoObrigatorio(opcoes)));
+      } else if (comando === 'relatorio' && acao === 'auditoria') {
+        this.exigir('GERAR_RELATORIOS'); this.exibir('INFO', this.relatorio.gerarRelatorioAuditoria(this.periodoObrigatorio(opcoes)));
       } else if (comando === 'ajuda') {
         this.exibirAjuda();
       } else { throw new Error('Comando inválido. Use ajuda.'); }
@@ -171,10 +174,10 @@ export class CLIInterface {
 
   exibirMenuPorPapel(papel: PapelUsuario): void {
     const menus: Record<PapelUsuario, string[]> = {
-      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'parametros consultar/historico/atualizar', 'org criar/listar/consultar/atualizar/desativar', 'contrato criar/listar/atualizar/cancelar/renovar/encerrar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar/listar/consultar/atualizar/status/cancelar/mover/corrigir-movimentacao/estornar-movimentacao/estado', 'rastrear', 'relatorio status/organizacao/financeiro'],
+      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'parametros consultar/historico/atualizar', 'org criar/listar/consultar/atualizar/desativar', 'contrato criar/listar/atualizar/cancelar/renovar/encerrar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar/listar/consultar/atualizar/status/cancelar/mover/corrigir-movimentacao/estornar-movimentacao/estado', 'rastrear', 'relatorio status/organizacao/financeiro/auditoria'],
       OPERADOR_CADASTRO: ['senha alterar', 'org criar/listar/consultar/atualizar/desativar', 'contrato criar/listar/atualizar/cancelar/renovar/encerrar'],
       GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar/listar/consultar/atualizar/cancelar/triagem', 'equip criar/listar/consultar/atualizar/status/cancelar/mover/corrigir-movimentacao/estornar-movimentacao/estado'],
-      AUDITOR: ['rastrear', 'relatorio status/organizacao/financeiro'],
+      AUDITOR: ['rastrear', 'relatorio status/organizacao/financeiro/auditoria'],
     };
     this.exibir('INFO', `Opções: ${menus[papel].join(' | ')}`);
   }
@@ -193,10 +196,10 @@ export class CLIInterface {
   private comandosDisponiveis(): string[] {
     if (!this.sessaoAtual) return this.comandosPublicos;
     const porPapel: Record<PapelUsuario, string[]> = {
-      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'parametros consultar', 'parametros historico', 'parametros atualizar', 'org criar', 'org listar', 'org consultar', 'org atualizar', 'org desativar', 'contrato criar', 'contrato listar', 'contrato atualizar', 'contrato cancelar', 'org renovar-contrato', 'org encerrar-contrato', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip listar', 'equip consultar', 'equip atualizar', 'equip status', 'equip cancelar', 'equip mover', 'equip corrigir-movimentacao', 'equip estornar-movimentacao', 'equip estado', 'rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
+      ADMINISTRADOR: ['usuario criar', 'usuario listar', 'usuario consultar', 'usuario nome', 'usuario papel', 'usuario senha', 'usuario desativar', 'senha alterar', 'parametros consultar', 'parametros historico', 'parametros atualizar', 'org criar', 'org listar', 'org consultar', 'org atualizar', 'org desativar', 'contrato criar', 'contrato listar', 'contrato atualizar', 'contrato cancelar', 'org renovar-contrato', 'org encerrar-contrato', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip listar', 'equip consultar', 'equip atualizar', 'equip status', 'equip cancelar', 'equip mover', 'equip corrigir-movimentacao', 'equip estornar-movimentacao', 'equip estado', 'rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro', 'relatorio auditoria'],
       OPERADOR_CADASTRO: ['senha alterar', 'org criar', 'org listar', 'org consultar', 'org atualizar', 'org desativar', 'contrato criar', 'contrato listar', 'contrato atualizar', 'contrato cancelar', 'org renovar-contrato', 'org encerrar-contrato'],
       GESTOR_ALMOXARIFADO: ['senha alterar', 'lote criar', 'lote listar', 'lote consultar', 'lote atualizar', 'lote cancelar', 'lote triagem', 'equip criar', 'equip listar', 'equip consultar', 'equip atualizar', 'equip status', 'equip cancelar', 'equip mover', 'equip corrigir-movimentacao', 'equip estornar-movimentacao', 'equip estado'],
-      AUDITOR: ['rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro'],
+      AUDITOR: ['rastrear', 'relatorio status', 'relatorio organizacao', 'relatorio financeiro', 'relatorio auditoria'],
     };
     return [...this.comandosPublicos, ...porPapel[this.sessaoAtual.papel]];
   }
@@ -209,7 +212,7 @@ export class CLIInterface {
       'contrato criar --org ORG --id CONTRATO --assinatura AAAA-MM-DD --vencimento AAAA-MM-DD --valor VALOR [--clausulas "A|B" --renovacao true]', 'contrato listar --org ORG', 'contrato atualizar --org ORG --id CONTRATO [--valor VALOR --clausulas "A|B" --renovacao true|false]', 'contrato cancelar --org ORG --id CONTRATO',
       'lote criar --id ID --org ORG --nf NF --transp TRANSPORTADORA [--data AAAA-MM-DD --obs "TEXTO"]', 'lote listar [--org ORG --inicio AAAA-MM-DD --fim AAAA-MM-DD --status STATUS --todos true]', 'lote consultar --id LOTE', 'lote atualizar --id LOTE [--data AAAA-MM-DD --nf NF --transp TRANSPORTADORA --obs "TEXTO"]', 'lote triagem --id LOTE', 'lote cancelar --id LOTE --motivo "MOTIVO"',
       'equip criar --id ID --lote LOTE --tipo TIPO --marca MARCA --modelo MODELO --ano ANO --estado ESTADO --peso KG', 'equip listar [--lote LOTE --status STATUS --todos true]', 'equip consultar --id ID | --codigo BARRAS', 'equip atualizar --id ID [--marca MARCA --modelo MODELO --ano ANO --peso KG]', 'equip status --id ID --status STATUS', 'equip mover --id EQUIPAMENTO --destino DESTINO', 'equip corrigir-movimentacao --id EQ --mov ID_MOV --destino NOVO --justificativa TEXTO', 'equip estornar-movimentacao --id EQ --mov ID_MOV --justificativa TEXTO', 'equip estado --id EQUIPAMENTO --estado ESTADO [--justificativa "TEXTO"]', 'equip cancelar --id EQUIPAMENTO --motivo "MOTIVO"',
-      'rastrear EQUIPAMENTO', 'relatorio status --status STATUS | relatorio organizacao --org ORG --inicio AAAA-MM-DD --fim AAAA-MM-DD | relatorio financeiro --inicio AAAA-MM-DD --fim AAAA-MM-DD',
+      'rastrear EQUIPAMENTO', 'relatorio status --status STATUS | relatorio organizacao --org ORG --inicio AAAA-MM-DD --fim AAAA-MM-DD | relatorio financeiro --inicio AAAA-MM-DD --fim AAAA-MM-DD | relatorio auditoria --inicio AAAA-MM-DD --fim AAAA-MM-DD',
       `Papéis: ${Object.values(PapelUsuario).join(', ')}`, `Estados: ${Object.values(EstadoFisico).join(', ')}`,
     ].join('\n'));
   }
@@ -224,10 +227,39 @@ export class CLIInterface {
   private exibir(nivel: NivelMensagem, mensagem: string): void { console.log(`[${nivel}] ${mensagem}`); }
   private tokenizar(texto: string): string[] { return texto.match(/(?:[^\s"]+|"[^"]*")+/g)?.map((item) => item.replace(/^"|"$/g, '')) ?? []; }
   private extrairOpcoes(tokens: string[]): Record<string, string> { const opcoes: Record<string, string> = {}; for (let indice = 0; indice < tokens.length; indice += 2) if (tokens[indice]?.startsWith('--')) opcoes[tokens[indice].slice(2)] = tokens[indice + 1] ?? ''; return opcoes; }
-  private carregarHistorico(): void { if (this.interface && existsSync(this.caminhoHistorico)) (this.interface as Interface & { history: string[] }).history = readFileSync(this.caminhoHistorico, 'utf-8').split(/\r?\n/).filter(Boolean).reverse(); }
+  private carregarHistorico(): void {
+    if (!this.interface) return;
+    const registro = this.repositorio?.carregarEntidade('historico-comandos', 'cli');
+    let comandos: string[] = (registro?.comandos ?? []).filter((comando: string) => this.comandoSeguroParaHistorico(comando));
+    if (existsSync(this.caminhoHistoricoLegado)) {
+      const antigos = readFileSync(this.caminhoHistoricoLegado, 'utf-8').split(/\r?\n/).filter((comando) => this.comandoSeguroParaHistorico(comando));
+      comandos = [...comandos, ...antigos].slice(-500);
+      if (this.repositorio) {
+        this.repositorio.salvarEntidade('historico-comandos', { id: 'cli', comandos });
+        unlinkSync(this.caminhoHistoricoLegado);
+      }
+    }
+    (this.interface as Interface & { history: string[] }).history = comandos.slice(-500).reverse();
+  }
   private salvarHistorico(comando: string): void {
-    if (/^(login|usuario criar|usuario senha|senha alterar)\b/i.test(comando.trim())) return;
-    mkdirSync('data', { recursive: true });
-    appendFileSync(this.caminhoHistorico, `${comando}\n`, 'utf-8');
+    if (!this.repositorio || !this.comandoSeguroParaHistorico(comando)) return;
+    const registro = this.repositorio.carregarEntidade('historico-comandos', 'cli');
+    const comandos = [...(registro?.comandos ?? []), comando.trim()].slice(-500);
+    this.repositorio.salvarEntidade('historico-comandos', { id: 'cli', comandos });
+  }
+
+  private comandoSeguroParaHistorico(comando: string): boolean {
+    const normalizado = comando.trim();
+    if (!normalizado) return false;
+    if (/^(login|usuario\s+(criar|senha)|senha\s+alterar)\b/i.test(normalizado)) return false;
+    return !/(?:^|\s)--(?:senha|password|nova|atual)(?:\s|$)/i.test(normalizado);
+  }
+
+  private periodoObrigatorio(opcoes: Record<string, string>): { inicio: Date; fim: Date } {
+    const inicio = this.dataObrigatoria(opcoes, 'inicio');
+    const fim = this.dataObrigatoria(opcoes, 'fim');
+    fim.setHours(23, 59, 59, 999);
+    if (inicio > fim) throw new Error('A data inicial não pode ser posterior à data final.');
+    return { inicio, fim };
   }
 }

@@ -91,6 +91,7 @@ As permissões são verificadas tanto no menu quanto antes da execução do serv
 | `relatorio status --status STATUS` | gera relatório por status |
 | `relatorio organizacao --org ORG --inicio AAAA-MM-DD --fim AAAA-MM-DD` | gera relatório por organização |
 | `relatorio financeiro --inicio AAAA-MM-DD --fim AAAA-MM-DD` | gera relatório financeiro |
+| `relatorio auditoria --inicio AAAA-MM-DD --fim AAAA-MM-DD` | lista operações do journal por data, resultado, entidade e responsável, sem exibir snapshots de dados |
 
 ## Persistência e segurança
 
@@ -102,6 +103,7 @@ As permissões são verificadas tanto no menu quanto antes da execução do serv
 - Cada gravação e exclusão registra uma intenção cifrada no journal antes de alterar o arquivo de dados; o resultado é registrado em seguida.
 - Na inicialização, o sistema remove temporários órfãos e reaplica intenções sem desfecho.
 - O journal é rotacionado ao atingir 10 MB e não é removido automaticamente, atendendo à retenção mínima de 180 dias.
+- O histórico da CLI é armazenado cifrado no repositório; no primeiro início após a atualização, o histórico legado em texto é migrado e removido após a migração bem-sucedida. Comandos com campos de senha não são persistidos.
 
 Detalhes, limitações e cenários de falha estão em [SEGURANCA_E_TESTES.md](docs/SEGURANCA_E_TESTES.md).
 
@@ -131,4 +133,4 @@ docs/           Documentação de segurança e testes
 
 ## Limitações conhecidas
 
-- O histórico de comandos da CLI não é cifrado; comandos que contêm senha não são gravados nele.
+- O histórico de comandos não contém entradas antigas com campos de senha; a migração legada as descarta.
