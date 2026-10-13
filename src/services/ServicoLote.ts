@@ -45,6 +45,7 @@ export class ServicoLote {
   adicionarEquipamentoLote(loteId: string, equipamento: Equipamento): void {
     const lote = this.buscarLote(loteId);
     lote.exigirAtivo();
+    if (lote.statusProcessamento !== StatusLote.RECEBIDO) throw new Error('Não é possível adicionar equipamento após o início da triagem.');
 
     if (equipamento.loteId !== loteId) {
       throw new Error('O equipamento deve pertencer ao mesmo lote informado.');
@@ -53,6 +54,12 @@ export class ServicoLote {
     if (lote.equipamentos.some((item) => item.id === equipamento.id)) {
       throw new Error('O equipamento já pertence a este lote.');
     }
+    const equipamentosExistentes = this.repositorio.listarEntidades('equipamentos');
+    if (equipamentosExistentes.some((item) => item.id === equipamento.id)) throw new Error('Já existe um equipamento com este identificador.');
+    if (equipamentosExistentes.some((item) => item.codigoBarrasInterno === equipamento.codigoBarrasInterno)) throw new Error('Já existe um equipamento com este código de barras.');
+    if (!equipamento.marca.trim() || !equipamento.modelo.trim()) throw new Error('Marca e modelo são obrigatórios.');
+    if (!Number.isInteger(equipamento.anoFabricacao) || equipamento.anoFabricacao < 1900 || equipamento.anoFabricacao > new Date().getFullYear()) throw new Error('O ano de fabricação é inválido.');
+    if (!Number.isFinite(equipamento.pesoQuilogramas) || equipamento.pesoQuilogramas <= 0) throw new Error('O peso deve ser maior que zero.');
     equipamento.exigirAtivo();
 
     equipamento.posicaoNoLote = lote.equipamentos.length + 1;
@@ -65,11 +72,18 @@ export class ServicoLote {
     const lote = this.buscarLote(loteId);
     lote.exigirAtivo();
 
+    if (lote.statusProcessamento !== StatusLote.RECEBIDO) {
+      throw new Error('A triagem só pode ser concluída uma vez, a partir de um lote recebido.');
+    }
+
     if (lote.equipamentos.length === 0) {
       throw new Error('Não é possível concluir a triagem de um lote sem equipamentos.');
     }
     if (lote.equipamentos.some((equipamento) => equipamento.cancelado)) {
       throw new Error('Não é possível concluir a triagem enquanto o lote contém equipamento cancelado.');
+    }
+    if (lote.equipamentos.some((equipamento) => equipamento.statusRastreamento !== StatusRastreamento.AGUARDANDO_TRIAGEM)) {
+      throw new Error('Todos os equipamentos precisam estar aguardando triagem para concluir esta etapa.');
     }
 
     lote.statusProcessamento = StatusLote.EM_TRIAGEM;

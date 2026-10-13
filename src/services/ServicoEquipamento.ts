@@ -19,7 +19,7 @@ export class ServicoEquipamento {
   constructor(private repositorio: RepositorioArquivo) {}
 
   rastrearEquipamento(id: string): HistoricoCompleto {
-    const dadosEquipamento = this.repositorio.carregarEntidade('equipamentos', id);
+    const dadosEquipamento = this.localizarDadosEquipamento(id);
 
     if (!dadosEquipamento) {
       throw new Error('Equipamento não encontrado.');
@@ -48,8 +48,62 @@ export class ServicoEquipamento {
     };
   }
 
+  consultarEquipamento(identificador: string): Equipamento {
+    return this.reconstituirEquipamento(this.localizarDadosEquipamento(identificador));
+  }
+
+  listarEquipamentos(filtros: { loteId?: string; status?: StatusRastreamento; incluirCancelados?: boolean } = {}): Equipamento[] {
+    return this.repositorio.listarEntidades('equipamentos')
+      .map((dados) => this.reconstituirEquipamento(dados))
+      .filter((equipamento) => filtros.incluirCancelados || !equipamento.cancelado)
+      .filter((equipamento) => !filtros.loteId || equipamento.loteId === filtros.loteId)
+      .filter((equipamento) => !filtros.status || equipamento.statusRastreamento === filtros.status);
+  }
+
+  atualizarEquipamento(id: string, dados: { marca?: string; modelo?: string; anoFabricacao?: number; pesoQuilogramas?: number }): Equipamento {
+    const equipamento = this.consultarEquipamento(id);
+    equipamento.exigirAtivo();
+    const lote = this.obterLote(equipamento.loteId);
+    if (lote.cancelado || lote.statusProcessamento !== StatusLote.RECEBIDO || equipamento.statusRastreamento !== StatusRastreamento.AGUARDANDO_TRIAGEM || equipamento.historicoMovimentacao.length > 0) {
+      throw new Error('Só é possível editar dados cadastrais antes da triagem e de qualquer movimentação.');
+    }
+    if (dados.marca !== undefined) { if (!dados.marca.trim()) throw new Error('A marca é obrigatória.'); equipamento.marca = dados.marca.trim(); }
+    if (dados.modelo !== undefined) { if (!dados.modelo.trim()) throw new Error('O modelo é obrigatório.'); equipamento.modelo = dados.modelo.trim(); }
+    if (dados.anoFabricacao !== undefined) {
+      if (!Number.isInteger(dados.anoFabricacao) || dados.anoFabricacao < 1900 || dados.anoFabricacao > new Date().getFullYear()) throw new Error('O ano de fabricação é inválido.');
+      equipamento.anoFabricacao = dados.anoFabricacao;
+    }
+    if (dados.pesoQuilogramas !== undefined) {
+      if (!Number.isFinite(dados.pesoQuilogramas) || dados.pesoQuilogramas <= 0) throw new Error('O peso deve ser maior que zero.');
+      equipamento.pesoQuilogramas = dados.pesoQuilogramas;
+    }
+    this.repositorio.salvarEntidade('equipamentos', equipamento);
+    this.atualizarEquipamentoNoLote(equipamento);
+    return equipamento;
+  }
+
+  atualizarStatusRastreamento(id: string, novoStatus: StatusRastreamento, responsavel: string): void {
+    const equipamento = this.consultarEquipamento(id);
+    equipamento.exigirAtivo();
+    const lote = this.obterLote(equipamento.loteId);
+    if (lote.cancelado) throw new Error('O lote está cancelado e não aceita operações nos equipamentos.');
+    if (novoStatus === equipamento.statusRastreamento) throw new Error('O equipamento já está neste status.');
+    if (equipamento.statusRastreamento === StatusRastreamento.BAIXA_DEFINITIVA) throw new Error('Um equipamento com baixa definitiva não pode mudar de status.');
+    const destinosFinais: StatusRastreamento[] = [StatusRastreamento.PECAS_REAPROVEITADAS, StatusRastreamento.MATERIAL_RECICLAVEL, StatusRastreamento.DESCARTE_SEGURO];
+    const permitido = equipamento.statusRastreamento === StatusRastreamento.AGUARDANDO_DESMONTE
+      ? novoStatus === StatusRastreamento.EM_DESMONTE && lote.statusProcessamento === StatusLote.TRIAGEM_CONCLUIDA
+      : equipamento.statusRastreamento === StatusRastreamento.EM_DESMONTE
+        ? destinosFinais.includes(novoStatus)
+        : destinosFinais.includes(equipamento.statusRastreamento) && novoStatus === StatusRastreamento.BAIXA_DEFINITIVA;
+    if (!permitido) throw new Error('Transição de status inválida. Siga a sequência triagem, desmontagem, destinação e baixa definitiva.');
+    equipamento.registrarMovimentacao(novoStatus, responsavel);
+    equipamento.atualizarStatus(novoStatus, 'Alteração de status registrada no histórico.');
+    this.repositorio.salvarEntidade('equipamentos', equipamento);
+    this.atualizarEquipamentoNoLote(equipamento);
+  }
+
   atualizarEstadoFisico(id: string, novoEstado: EstadoFisico, justificativa = ''): void {
-    const dados = this.repositorio.carregarEntidade('equipamentos', id);
+    const dados = this.localizarDadosEquipamento(id);
 
     if (!dados) {
       throw new Error('Equipamento não encontrado.');
@@ -57,7 +111,11 @@ export class ServicoEquipamento {
 
     const equipamento = this.reconstituirEquipamento(dados);
     equipamento.exigirAtivo();
-    this.exigirLoteAtivo(equipamento);
+    const lote = this.obterLote(equipamento.loteId);
+    if (lote.cancelado) throw new Error('O lote está cancelado e não aceita operações nos equipamentos.');
+    if (lote.statusProcessamento !== StatusLote.RECEBIDO || equipamento.statusRastreamento !== StatusRastreamento.AGUARDANDO_TRIAGEM) {
+      throw new Error('O estado físico só pode ser corrigido antes da conclusão da triagem.');
+    }
     const ordem: Record<EstadoFisico, number> = {
       [EstadoFisico.NOVO]: 0,
       [EstadoFisico.BOM_ESTADO]: 1,
@@ -81,7 +139,7 @@ export class ServicoEquipamento {
   }
 
   registrarMovimentacao(id: string, destino: string, responsavel: string): void {
-    const dados = this.repositorio.carregarEntidade('equipamentos', id);
+    const dados = this.localizarDadosEquipamento(id);
 
     if (!dados) {
       throw new Error('Equipamento não encontrado.');
@@ -96,8 +154,7 @@ export class ServicoEquipamento {
   }
 
   cancelarEquipamento(id: string, motivo: string): void {
-    const dados = this.repositorio.carregarEntidade('equipamentos', id);
-    if (!dados) throw new Error('Equipamento não encontrado.');
+    const dados = this.localizarDadosEquipamento(id);
     const equipamento = this.reconstituirEquipamento(dados);
     this.exigirLoteAtivo(equipamento);
     equipamento.cancelar(motivo);
@@ -110,7 +167,14 @@ export class ServicoEquipamento {
       throw new Error('A sequência do código de barras deve ser um inteiro positivo.');
     }
 
-    return `GC-${tipo}-${sequencia.toString().padStart(6, '0')}`;
+    let candidato = sequencia;
+    let codigo = `GC-${tipo}-${candidato.toString().padStart(6, '0')}`;
+    const codigosExistentes = new Set(this.repositorio.listarEntidades('equipamentos').map((item) => item.codigoBarrasInterno));
+    while (codigosExistentes.has(codigo)) {
+      candidato += 1;
+      codigo = `GC-${tipo}-${candidato.toString().padStart(6, '0')}`;
+    }
+    return codigo;
   }
 
   private atualizarEquipamentoNoLote(equipamento: Equipamento): void {
@@ -133,6 +197,19 @@ export class ServicoEquipamento {
     const lote = this.repositorio.carregarEntidade('lotes', equipamento.loteId);
     if (!lote) throw new Error('Lote associado ao equipamento não encontrado.');
     if (lote.cancelado) throw new Error('O lote está cancelado e não aceita operações nos equipamentos.');
+  }
+
+  private localizarDadosEquipamento(identificador: string): any {
+    const dados = this.repositorio.carregarEntidade('equipamentos', identificador)
+      ?? this.repositorio.listarEntidades('equipamentos').find((item) => item.codigoBarrasInterno === identificador);
+    if (!dados) throw new Error('Equipamento não encontrado por ID ou código de barras.');
+    return dados;
+  }
+
+  private obterLote(id: string): Lote {
+    const dados = this.repositorio.carregarEntidade('lotes', id);
+    if (!dados) throw new Error('Lote associado ao equipamento não encontrado.');
+    return this.reconstituirLote(dados);
   }
 
   private reconstituirEquipamento(dados: any): Equipamento {

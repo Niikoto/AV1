@@ -78,6 +78,9 @@ As permissões são verificadas tanto no menu quanto antes da execução do serv
 | `lote triagem --id LOTE` | conclui a triagem do lote |
 | `lote cancelar --id LOTE --motivo MOTIVO` | cancela sem apagar o lote; equipamentos ativos precisam ser cancelados antes |
 | `equip criar ...` | cadastra equipamento em um lote |
+| `equip listar [--lote LOTE --status STATUS --todos true]` / `equip consultar --id ID` ou `--codigo BARRAS` | consulta equipamentos por lote, status, ID ou código de barras |
+| `equip atualizar --id ID [...]` / `equip cancelar --id ID --motivo MOTIVO` | corrige cadastro antes da triagem ou cancela sem apagar o histórico |
+| `equip status --id ID --status STATUS` | avança pela sequência triagem, desmontagem, destinação e baixa definitiva |
 | `equip mover --id EQ --destino LOCAL` | registra movimentação |
 | `equip estado --id EQ --estado ESTADO --justificativa "TEXTO"` | atualiza estado físico |
 | `rastrear EQ` | mostra equipamento, lote, organização e movimentações |
@@ -125,4 +128,3 @@ docs/           Documentação de segurança e testes
 ## Limitações conhecidas
 
 - O histórico de comandos da CLI não é cifrado; comandos que contêm senha não são gravados nele.
-- A regra de impedir `EM_DESMONTE` antes da triagem depende de uma operação de alteração de status que ainda não existe no serviço de equipamentos.
