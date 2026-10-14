@@ -65,32 +65,38 @@ Execute na raiz do projeto:
 npm test
 ```
 
-O comando compila o TypeScript e executa `tests/av1.test.mjs` pelo executor nativo do Node.js. Os testes usam diretórios temporários dentro do workspace e não modificam os dados reais.
+O comando compila o TypeScript e executa `tests/av1.test.mjs` pelo executor nativo do Node.js. Os testes usam diretórios temporários do sistema operacional e não modificam os dados reais.
 
 ## Cenários de falha testados
 
 | Cenário | Resposta do sistema | Resultado |
 | --- | --- | --- |
-| CNPJ inválido | cadastro rejeitado com erro de validação | Aprovado |
-| CNPJ duplicado | cadastro rejeitado | Aprovado |
-| Data futura | criação do lote rejeitada | Aprovado |
-| Lote com mais de 90 dias | criação rejeitada | Aprovado |
-| Queda de duas categorias sem justificativa | alteração de estado rejeitada | Aprovado |
-| Queda com justificativa | alteração concluída | Aprovado |
-| Senha incorreta | login rejeitado | Aprovado |
-| Usuário sem permissão | permissão retorna falso | Aprovado |
-| Sessão expirada | token inválido e sessão removida | Aprovado |
-| Escrita atômica com sucesso | não sobra arquivo temporário | Aprovado |
-| Falha antes da renomeação | arquivo definitivo intacto, temporário removido e transação abortada no journal | Aprovado |
-| Intenção sem desfecho | reaplicação idempotente na recuperação de inicialização | Aprovado |
-| Temporário órfão | removido na inicialização sem alterar o arquivo definitivo | Aprovado |
-| Journal acima de 10 MB | arquivo é rotacionado | Aprovado |
-| Jornada completa | provisionamento, login, lote, triagem, movimentações, rastreabilidade e journal automático | Aprovado |
-| Gestão de contas | consulta sem segredos, alteração de nome/papel, redefinição de senha, autorização no serviço e desativação | Aprovado |
+| CNPJ inválido ou duplicado | cadastro rejeitado | Testado |
+| Data de entrada futura ou anterior a 90 dias | criação de lote rejeitada | Testado |
+| Queda de duas categorias no estado físico sem justificativa | alteração rejeitada; com justificativa, alteração e evento persistidos | Testado |
+| Senha incorreta, falta de permissão ou sessão expirada | autenticação/operação rejeitada | Testado |
+| Gestão de contas | consulta sem hash/salt, atualização de nome e papel, redefinição de senha e desativação com referência histórica anonimizada | Testado |
+| Contrato na jornada | cadastro e alteração de valor aparecem no contexto rastreável | Testado |
+| Desmontagem antes da triagem | transição para `EM_DESMONTE` rejeitada | Testado |
+| Jornada operacional | provisionamento, usuário, organização e contrato, lote, equipamento, triagem, desmontagem, destinação, baixa, correção, autoria, rastreabilidade e journal confirmado | Testado |
+| Estorno de movimentação | evento original mantido, estorno vinculado e localização retornada à origem | Testado |
+| Parâmetros globais | controle de acesso administrativo e versões históricas de alíquota e coeficiente | Testado |
+| Histórico de comandos | conteúdo gravado cifrado e recuperável pelo repositório | Testado |
+| Escrita atômica bem-sucedida | arquivo temporário removido após a gravação | Testado |
+| Falha antes da renomeação | arquivo de dados inalterado, temporário removido e aborto registrado | Testado |
+| Intenção sem desfecho | recuperação reaplica os dados e uma segunda recuperação não repete a operação | Testado |
+| Temporário órfão | removido na inicialização simulada sem alterar o arquivo definitivo | Testado |
+| Rotação do journal | arquivo sintético no limite de 10 MB é rotacionado antes do próximo registro | Testado |
 
-## Pendências identificadas pelos testes
+## Limitações e escopo de validação
 
-Um teste permanece como `TODO` para a regra de bloquear `EM_DESMONTE` antes da triagem. A regra já foi implementada no serviço; o passo 10 deve substituir o TODO por um teste de regressão.
+- Os testes são de serviços e persistência; não automatizam uma sessão interativa completa da CLI nem todas as mensagens e caminhos de menu.
+- A falha de escrita é injetada antes da renomeação. A recuperação de intenção pendente é simulada gravando uma intenção sem desfecho; não é um teste de desligamento forçado do processo, falta real de espaço ou falha física de disco.
+- A renomeação torna atômica a substituição de um arquivo individual. Operações de negócio que salvam mais de uma entidade (por exemplo, equipamento e lote, ou vários equipamentos durante a triagem) não têm uma fronteira de commit atômico conjunta. Os testes não simulam interrupção entre essas gravações.
+- A retenção de 180 dias não expira automaticamente: a política implementada é não remover journals. O teste verifica a rotação por tamanho, mas não a leitura dos arquivos rotacionados, a passagem do tempo, a conservação operacional ou a existência de backups.
+- O teste do histórico da CLI verifica que os dados salvos no repositório não ficam em texto puro. A filtragem de comandos com senha e a migração do arquivo legado são comportamentos documentados, mas não têm teste automatizado dedicado.
+- A jornada cobre cadastro e alteração de contrato, mas não renovação. A renovação atualiza o contrato vigente separadamente da coleção histórica usada pela linha do tempo, então a renovação precisa de correção e teste próprios antes de ser considerada rastreável.
+- As credenciais ainda usam SHA-256 com salt para hash de senha. Conforme descrito acima, isso não equivale a uma função lenta de derivação de senha adequada a produção.
 
 ## Comandos principais
 

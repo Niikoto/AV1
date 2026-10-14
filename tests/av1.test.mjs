@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
@@ -13,15 +14,18 @@ import { ServicoAutenticacao } from '../dist/services/ServicoAutenticacao.js';
 import { ServicoEquipamento } from '../dist/services/ServicoEquipamento.js';
 import { ServicoLote } from '../dist/services/ServicoLote.js';
 import { ServicoOrganizacao } from '../dist/services/ServicoOrganizacao.js';
+import { ServicoParametrosGlobais } from '../dist/services/ServicoParametrosGlobais.js';
+import { ServicoRelatorio } from '../dist/services/ServicoRelatorio.js';
 import { EstadoFisico } from '../dist/types/EstadoFisico.js';
 import { PapelUsuario } from '../dist/types/PapelUsuario.js';
+import { StatusLote } from '../dist/types/StatusLote.js';
 import { StatusRastreamento } from '../dist/types/StatusRastreamento.js';
 import { TipoEquipamento } from '../dist/types/TipoEquipamento.js';
 import { ValidadorCNPJ } from '../dist/validators/ValidadorCNPJ.js';
 import { ValidadorDataEntrada } from '../dist/validators/ValidadorDataEntrada.js';
 
 function criarContexto(opcoesRepositorio = {}) {
-  const raiz = mkdtempSync(join(process.cwd(), '.tmp-greencode-av1-'));
+  const raiz = mkdtempSync(join(tmpdir(), 'greencode-av1-'));
   const criptografia = new CriptografiaArquivo();
   const configuracao = new ConfiguracaoSistema(join(raiz, 'configuracao-mestre.json'));
   const provisionamento = new ProvisionamentoInicial(configuracao, criptografia);
@@ -61,26 +65,94 @@ test('jornada completa: provisionamento, rastreabilidade e journal', () => {
     contexto.autenticacao.criarCredencial('admin', 'senha-admin-segura', PapelUsuario.ADMINISTRADOR);
     const sessao = contexto.autenticacao.login('admin', 'senha-admin-segura');
     assert.equal(contexto.autenticacao.validarToken(sessao.token), true);
+    contexto.repositorio.definirUsuarioResponsavel(sessao.usuarioId);
 
-    cadastrarOrganizacao(contexto.organizacao);
+    const organizacao = cadastrarOrganizacao(contexto.organizacao);
+    const dataAssinatura = new Date();
+    const dataVencimento = new Date(dataAssinatura);
+    dataVencimento.setFullYear(dataVencimento.getFullYear() + 1);
+    const contrato = contexto.organizacao.cadastrarContrato('ORG-001', {
+      id: 'CONTRATO-001',
+      dataAssinatura,
+      dataVencimento,
+      clausulas: ['Coleta e destinação de equipamentos eletrônicos'],
+      valorMensal: 1250,
+      renovacaoAutomatica: false,
+    });
+    contexto.organizacao.atualizarContrato('ORG-001', contrato.id, { valorMensal: 1300 });
+
     contexto.lote.criarLote({ id: 'LOTE-001', dataEntrada: new Date(), organizacaoId: 'ORG-001', notaFiscal: 'NF-123', transportadora: 'TransRapida' });
     const equipamento = new Equipamento('EQ-001', contexto.equipamento.gerarCodigoBarras(TipoEquipamento.NOTEBOOK, 1), TipoEquipamento.NOTEBOOK, 'Marca', 'Modelo', 2024, EstadoFisico.BOM_ESTADO, 2.5, 'LOTE-001', 0, StatusRastreamento.AGUARDANDO_TRIAGEM, []);
     contexto.lote.adicionarEquipamentoLote('LOTE-001', equipamento);
+    assert.equal(contexto.lote.listarLotes({ organizacaoId: organizacao.id, status: StatusLote.RECEBIDO }).length, 1);
+    assert.equal(contexto.equipamento.consultarEquipamento(equipamento.codigoBarrasInterno).id, equipamento.id);
+    assert.throws(
+      () => contexto.equipamento.atualizarStatusRastreamento('EQ-001', StatusRastreamento.EM_DESMONTE, sessao.usuarioId),
+      /Transição de status inválida/,
+    );
+
     contexto.lote.processarTriagem('LOTE-001');
-    contexto.equipamento.registrarMovimentacao('EQ-001', 'Área de desmontagem', 'admin');
-    contexto.equipamento.registrarMovimentacao('EQ-001', 'Armazenamento', 'admin');
+    contexto.equipamento.atualizarStatusRastreamento('EQ-001', StatusRastreamento.EM_DESMONTE, sessao.usuarioId);
+    contexto.equipamento.registrarMovimentacao('EQ-001', 'Área de desmontagem', sessao.usuarioId);
+    contexto.equipamento.registrarMovimentacao('EQ-001', 'Armazenamento intermediário', sessao.usuarioId);
+    const movimentacaoCorrigida = contexto.equipamento.consultarEquipamento('EQ-001')
+      .historicoMovimentacao.find((evento) => evento.destino === 'Armazenamento intermediário');
+    contexto.equipamento.corrigirMovimentacao(
+      'EQ-001',
+      movimentacaoCorrigida.id,
+      'Bancada de desmontagem',
+      sessao.usuarioId,
+      'Destino informado incorretamente no registro original.',
+    );
+    contexto.equipamento.atualizarStatusRastreamento('EQ-001', StatusRastreamento.PECAS_REAPROVEITADAS, sessao.usuarioId);
+    contexto.equipamento.atualizarStatusRastreamento('EQ-001', StatusRastreamento.BAIXA_DEFINITIVA, sessao.usuarioId);
 
     const historico = contexto.equipamento.rastrearEquipamento('EQ-001');
-    assert.equal(historico.equipamento.statusRastreamento, StatusRastreamento.AGUARDANDO_DESMONTE);
+    assert.equal(historico.equipamento.statusRastreamento, StatusRastreamento.BAIXA_DEFINITIVA);
     assert.equal(historico.lote.id, 'LOTE-001');
     assert.equal(historico.organizacao.id, 'ORG-001');
-    assert.equal(historico.movimentacoes.length, 2);
-    assert.equal(historico.movimentacoes[0].destino, 'Área de desmontagem');
+    assert.equal(historico.organizacao.contratos[0].valorMensal, 1300);
+    assert.equal(historico.movimentacoes.some((evento) => evento.tipoEvento === 'CORRECAO' && evento.destinoCorrigido === 'Bancada de desmontagem'), true);
+    assert.equal(historico.movimentacoes.filter((evento) => evento.tipoEvento === 'MOVIMENTACAO').length, 2);
+    assert.equal(historico.localizacaoAtual, 'Bancada de desmontagem');
+    assert.equal(historico.movimentacoes.find((evento) => evento.tipoEvento === 'MOVIMENTACAO').destino, 'Área de desmontagem');
+    assert.equal(historico.movimentacoes.every((evento) => evento.responsavel === sessao.usuarioId), true);
+    assert.equal(historico.linhaDoTempo.some((evento) => evento.tipo === 'CONTRATO'), true);
+    assert.equal(historico.linhaDoTempo.some((evento) => evento.tipo === 'CORRECAO'), true);
+    assert.deepEqual(
+      historico.linhaDoTempo.map((evento) => evento.dataHora.getTime()),
+      historico.linhaDoTempo.map((evento) => evento.dataHora.getTime()).toSorted((a, b) => a - b),
+    );
 
-    JournalTransacao.criar('TESTE_JORNADA', 'equipamentos', null, { id: 'EQ-001' }, 'admin', contexto.repositorio).registrar();
     const journal = JournalTransacao.listar(contexto.repositorio);
-    assert.equal(journal.some((transacao) => transacao.operacao === 'TESTE_JORNADA'), true);
-    assert.equal(journal.some((transacao) => transacao.operacao === 'CRIAR' && transacao.entidade === 'organizacoes'), true);
+    assert.equal(journal.some((transacao) => transacao.operacao === 'CRIAR' && transacao.entidade === 'organizacoes' && transacao.resultado === 'CONFIRMADA'), true);
+    assert.equal(journal.some((transacao) => transacao.entidade === 'equipamentos' && transacao.usuarioResponsavel === sessao.usuarioId), true);
+    assert.equal(journal.every((transacao) => transacao.resultado !== 'PENDENTE'), true);
+
+    const relatorio = new ServicoRelatorio(contexto.repositorio);
+    assert.match(relatorio.gerarRelatorioAuditoria({ inicio: new Date(0), fim: new Date(Date.now() + 1000) }), /responsável:/);
+  } finally { removerContexto(contexto); }
+});
+
+test('estorno registra evento histórico e retorna à origem sem remover a movimentação', () => {
+  const contexto = criarContexto();
+  try {
+    cadastrarOrganizacao(contexto.organizacao);
+    contexto.lote.criarLote({ id: 'LOTE-001', dataEntrada: new Date(), organizacaoId: 'ORG-001', notaFiscal: 'NF-123', transportadora: 'TransRapida' });
+    const equipamento = new Equipamento('EQ-001', 'GC-NOTEBOOK-000001', TipoEquipamento.NOTEBOOK, 'Marca', 'Modelo', 2024, EstadoFisico.BOM_ESTADO, 2.5, 'LOTE-001', 0, StatusRastreamento.AGUARDANDO_TRIAGEM, []);
+    contexto.lote.adicionarEquipamentoLote('LOTE-001', equipamento);
+    contexto.lote.processarTriagem('LOTE-001');
+    contexto.equipamento.registrarMovimentacao('EQ-001', 'Área de desmontagem', 'operador-001');
+    const original = contexto.equipamento.consultarEquipamento('EQ-001').historicoMovimentacao[0];
+
+    contexto.equipamento.estornarMovimentacao('EQ-001', original.id, 'operador-001', 'Movimentação lançada por engano.');
+
+    const rastreio = contexto.equipamento.rastrearEquipamento('EQ-001');
+    assert.equal(rastreio.movimentacoes.length, 2);
+    assert.equal(rastreio.movimentacoes[0].id, original.id);
+    assert.equal(rastreio.movimentacoes[1].tipoEvento, 'ESTORNO');
+    assert.equal(rastreio.movimentacoes[1].movimentacaoReferenciadaId, original.id);
+    assert.equal(rastreio.localizacaoAtual, 'RECEBIMENTO');
   } finally { removerContexto(contexto); }
 });
 
@@ -171,6 +243,28 @@ test('administrador consulta, atualiza e desativa contas preservando uma referê
   } finally { removerContexto(contexto); }
 });
 
+test('parâmetros globais criam versões auditáveis e exigem permissão administrativa', () => {
+  const contexto = criarContexto();
+  try {
+    contexto.autenticacao.criarCredencial('admin', 'senha-admin', PapelUsuario.ADMINISTRADOR);
+    const admin = contexto.autenticacao.login('admin', 'senha-admin');
+    contexto.autenticacao.criarCredencial('auditor', 'senha-auditor', PapelUsuario.AUDITOR, 'Auditor', admin.token);
+    const auditor = contexto.autenticacao.login('auditor', 'senha-auditor');
+    const parametros = new ServicoParametrosGlobais(contexto.repositorio, contexto.autenticacao);
+
+    assert.equal(parametros.consultar(admin.token).coeficienteDepreciacao, 0.08);
+    assert.throws(() => parametros.consultar(auditor.token), /permissão/);
+    const primeiraVersao = parametros.atualizar(admin.token, { imposto: 'ICMS', aliquota: 0.18 }, admin.usuarioId);
+    const segundaVersao = parametros.atualizar(admin.token, { coeficienteDepreciacao: 0.1 }, admin.usuarioId);
+
+    assert.equal(segundaVersao.versao, primeiraVersao.versao + 1);
+    assert.equal(segundaVersao.aliquotasImpostos.ICMS, 0.18);
+    assert.equal(segundaVersao.coeficienteDepreciacao, 0.1);
+    assert.deepEqual(parametros.listarHistorico(admin.token).map((versao) => versao.versao), [1, 2]);
+    assert.throws(() => parametros.atualizar(auditor.token, { coeficienteDepreciacao: 0.2 }, auditor.usuarioId), /permissão/);
+  } finally { removerContexto(contexto); }
+});
+
 test('persiste com escrita atômica sem arquivo temporário após sucesso', () => {
   const contexto = criarContexto();
   try {
@@ -178,6 +272,19 @@ test('persiste com escrita atômica sem arquivo temporário após sucesso', () =
     const diretorio = join(contexto.raiz, 'dados');
     assert.equal(readdirSync(diretorio).some((arquivo) => arquivo.includes('.tmp-')), false);
     assert.equal(contexto.repositorio.listarEntidades('organizacoes').length, 1);
+  } finally { removerContexto(contexto); }
+});
+
+test('histórico de comandos é persistido cifrado e pode ser lido pelo repositório', () => {
+  const contexto = criarContexto();
+  try {
+    const comandos = ['org listar', 'relatorio status --status AGUARDANDO_TRIAGEM'];
+    contexto.repositorio.salvarEntidade('historico-comandos', { id: 'cli', comandos });
+
+    const arquivo = readFileSync(join(contexto.raiz, 'dados', 'historico-comandos.txt'), 'utf-8');
+    assert.equal(arquivo.includes(comandos[0]), false);
+    assert.equal(arquivo.includes(comandos[1]), false);
+    assert.deepEqual(contexto.repositorio.carregarEntidade('historico-comandos', 'cli').comandos, comandos);
   } finally { removerContexto(contexto); }
 });
 
@@ -241,7 +348,6 @@ test('rotaciona o journal ao ultrapassar 10 MB', () => {
   } finally { removerContexto(contexto); }
 });
 
-test.todo('bloqueia a mudança para EM_DESMONTE antes de a triagem ser concluída: falta método de alteração de status no ServicoEquipamento');
 test('a recuperação de transações permanece idempotente depois de confirmada', () => {
   const contexto = criarContexto();
   try {

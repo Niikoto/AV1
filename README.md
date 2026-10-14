@@ -113,7 +113,7 @@ Detalhes, limitações e cenários de falha estão em [SEGURANCA_E_TESTES.md](do
 npm test
 ```
 
-A suíte cobre provisionamento, autenticação, permissões, validações de CNPJ e data, estado físico, escrita atômica, rotação de journal e a jornada de rastreabilidade.
+A suíte cobre provisionamento, contas e permissões, ciclo de contrato, recebimento e triagem de lote, destinação e rastreabilidade, correção e estorno de movimentações, versões de parâmetros, histórico da CLI cifrado, gravação atômica por arquivo, recuperação de journal e rotação.
 
 ## Estrutura
 
@@ -134,3 +134,6 @@ docs/           Documentação de segurança e testes
 ## Limitações conhecidas
 
 - O histórico de comandos não contém entradas antigas com campos de senha; a migração legada as descarta.
+- Os testes exercitam serviços e persistência, mas não automatizam uma sessão interativa completa da CLI.
+- A gravação atômica protege cada arquivo individualmente; operações que atualizam mais de uma entidade não têm garantia de commit atômico conjunto.
+- A retenção mínima do journal é atendida por não haver expurgo automático; a execução dos testes não simula a passagem de 180 dias nem valida backups.
